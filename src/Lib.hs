@@ -1,3 +1,4 @@
+{-# LANGUAGE DataKinds     #-}
 {-# LANGUAGE TupleSections #-}
 
 module Lib(
@@ -24,7 +25,7 @@ someFunc = interactIO
     ((return .) . handleEvent)
     (const (pure ()))
 
-data World = World InputState (M.Map AtomLabel Atom) [Orbital]
+data World = World InputState (Atoms 2) [Orbital]
 
 data InputState = Typing String | Editing String
 
@@ -40,14 +41,14 @@ emptyWorld = World (Typing []) M.empty [Orbital []]
 renderWorld :: World -> Picture
 renderWorld (World input atoms orbs) = pictures $ renderOrbitals atoms orbs : renderInput input : map (uncurry renderAtom) (M.toList atoms)
 
-renderAtom :: AtomLabel -> Atom -> Picture
-renderAtom label (Atom x y _) = Color white $ Translate (x*viewScale) (y*viewScale) $ Pictures [Scale 0.1 0.1 $ Text label, Circle 20]
+renderAtom :: AtomLabel -> Atom 2 -> Picture
+renderAtom label (Atom [x,y] _) = Color white $ Translate (x*viewScale) (y*viewScale) $ Pictures [Scale 0.1 0.1 $ Text label, Circle 20]
 
 renderInput :: InputState -> Picture
 renderInput (Typing  s) = Color red   $ Translate (-390) (-390) $ Scale 0.2 0.2 $ Text ('>':s)
 renderInput (Editing s) = Color white $ Translate (-390) (-390) $ Scale 0.2 0.2 $ Text ('#':s)
 
-renderOrbitals :: Atoms -> [Orbital] -> Picture
+renderOrbitals :: Atoms 2 -> [Orbital] -> Picture
 renderOrbitals atoms [] = Blank
 renderOrbitals atoms (o:_) = Scale lodF lodF $ bitmapOfOrbital px px (viewScale / lodF) o atoms
     where px   = div 800 viewLOD
@@ -62,9 +63,9 @@ handleEvent event w@(World inputState atoms orbs) = case inputState of
         _ -> w
     (Editing s) -> case event of
         (EventKey (SpecialKey KeyEnter) Down _ _) -> World (Typing s) atoms orbs
-        (EventKey (MouseButton LeftButton) Down _ (x,y)) -> World inputState (M.insert s (emptyAtom (x/viewScale) (y/viewScale) (length atoms)) atoms) orbs
+        (EventKey (MouseButton LeftButton) Down _ (x,y)) -> World inputState (M.insert s (emptyAtom [x/viewScale, y/viewScale] (length atoms)) atoms) orbs
         (EventKey (Char 'f') Down _ _) -> World inputState atoms (testOrbs atoms)
         _ -> w
 
-testOrbs :: Atoms -> [Orbital]
+testOrbs :: Atoms n -> [Orbital]
 testOrbs = (:[]) . Orbital . map (,(),1) . M.keys

@@ -1,3 +1,4 @@
+{-# LANGUAGE DataKinds #-}
 module Render(
     bitmapOfOrbital
 ) where
@@ -17,10 +18,10 @@ import Data.Complex
 bitmapFormat :: BitmapFormat
 bitmapFormat = BitmapFormat BottomToTop PxRGBA
 
-bitmapOfOrbital :: Int -> Int -> Float -> Orbital -> Atoms -> Picture
+bitmapOfOrbital :: Int -> Int -> Float -> Orbital -> Atoms 2 -> Picture
 bitmapOfOrbital x y scale orbital atoms = bitmapOfByteString x y bitmapFormat (BS.toStrict $ bytestringOfOrbital x y scale orbital atoms) True
 
-bytestringOfOrbital :: Int -> Int -> Float -> Orbital -> Atoms -> BS.ByteString
+bytestringOfOrbital :: Int -> Int -> Float -> Orbital -> Atoms 2 -> BS.ByteString
 bytestringOfOrbital x0 y0 scale (Orbital gds) atoms = toLazyByteString rows
     where rows  = mconcat $ map (row  . (/scale) . fromIntegral . (+(-div y0 2))) [0..y0-1]
           row y = mconcat $ map (px y . (/scale) . fromIntegral . (+(-div x0 2))) [0..x0-1]
@@ -28,7 +29,7 @@ bytestringOfOrbital x0 y0 scale (Orbital gds) atoms = toLazyByteString rows
           colour z = mconcat $ (map (word8 . floor . (*255)) (colourCode z)) ++ [word8 255]
           value x y = sum (map (flip evaluate [x,y]) gs)
           gs = map getOrbital gds
-          getOrbital (al,ol,a) = let (Atom x y orbs) = (M.!) atoms al in scaleGauss a $ shiftGauss [x,y] $ (M.!) orbs ol
+          getOrbital (al,ol,a) = let (Atom [x,y] orbs) = (M.!) atoms al in scaleGauss a $ shiftGauss [x,y] $ (M.!) orbs ol
 
 colourCode :: Complex Float -> [Float]
 colourCode z = map ((1-).(ri*).(1-).(r0*) . softClamp . (2-) . abs . (/(pi/3)) . rerange . (θ+)) [0, 2*pi/3, 4*pi/3]

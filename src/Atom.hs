@@ -1,3 +1,5 @@
+{-# LANGUAGE DataKinds      #-}
+{-# LANGUAGE KindSignatures #-}
 module Atom(
     Atom(..),
     OrbitalLabel,
@@ -10,11 +12,12 @@ import Gaussian
 
 import Data.Complex
 import qualified Data.Map as M
+import GHC.TypeLits
 
 type AtomLabel = String
 type OrbitalLabel = ()
-data Atom = Atom Float Float (M.Map OrbitalLabel Gaussian)
-type Atoms = M.Map AtomLabel Atom
+data Atom (n::Nat) = Atom [Float] (M.Map OrbitalLabel (Gaussian n))
+type Atoms (n::Nat) = M.Map AtomLabel (Atom n)
 
-emptyAtom :: Float -> Float -> Int -> Atom
-emptyAtom x y n = Atom x y (M.singleton () (Gaussian [0,0] 0.5 (2*(cis $ fromIntegral n))))
+emptyAtom :: KnownNat n => [Float] -> Int -> Atom n
+emptyAtom xs ix = Atom xs (M.singleton () (centralGaussian 0.5 (cis $ fromIntegral ix)))
