@@ -5,6 +5,7 @@ module Lib(
     someFunc
 ) where
 
+import Linear
 import Gaussian
 import Atom
 import Orbital
@@ -36,7 +37,7 @@ viewLOD :: Int
 viewLOD = 4
 
 emptyWorld :: World
-emptyWorld = World (Typing []) M.empty [Orbital []]
+emptyWorld = World (Typing []) M.empty [mempty]
 
 renderWorld :: World -> Picture
 renderWorld (World input atoms orbs) = pictures $ renderOrbitals atoms orbs : renderInput input : map (uncurry renderAtom) (M.toList atoms)
@@ -68,4 +69,4 @@ handleEvent event w@(World inputState atoms orbs) = case inputState of
         _ -> w
 
 testOrbs :: Atoms n -> [Orbital]
-testOrbs = (:[]) . Orbital . map (,(),1) . M.keys
+testOrbs = (:[]) . mconcat . map (single . (,())) . M.keys

@@ -2,6 +2,7 @@
 {-# LANGUAGE KindSignatures      #-}
 {-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving  #-}
 module Gaussian(
     Gaussian(..),
     centralGaussian,
@@ -17,7 +18,7 @@ import Data.Complex
 import Data.List
 import GHC.TypeLits --(natVal, Nat, KnownNat)
 
-data Gaussian (n::Nat) = Gaussian [Float] Float (Complex Float)
+data Gaussian (n::Nat) = Gaussian [Float] Float (Complex Float) deriving (Eq, Ord, Show)
 
 centralGaussian :: forall n . KnownNat n => Float -> Complex Float -> Gaussian n
 centralGaussian = Gaussian (genericReplicate (natVal @n Proxy) 0)
@@ -56,3 +57,5 @@ zipWith' :: (a->b->c) -> [a] -> [b] -> [c]
 zipWith' f (x:xs) (y:ys) = f x y : zipWith' f xs ys
 zipWith' _ [] [] = []
 zipWith' _ _ _ = error "Non-matching list lengths."
+
+deriving instance Ord a => Ord (Complex a)
