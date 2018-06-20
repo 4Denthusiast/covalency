@@ -3,28 +3,40 @@
 {-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving  #-}
+{-# LANGUAGE FlexibleInstances   #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 module Gaussian(
     Gaussian(..),
+    Gaussians,
     centralGaussian,
     evaluate,
+    evaluates,
     integral,
     convolve,
     multiply,
     shiftGauss,
-    scaleGauss
+    scaleGauss,
+    norm2,
+    Proxy(..),
 ) where
+
+import Linear
 
 import Data.Complex
 import Data.List
 import GHC.TypeLits --(natVal, Nat, KnownNat)
 
 data Gaussian (n::Nat) = Gaussian [Float] Float (Complex Float) deriving (Eq, Ord, Show)
+type Gaussians (n::Nat) = Linear (Complex Float) (Gaussian n)
 
 centralGaussian :: forall n . KnownNat n => Float -> Complex Float -> Gaussian n
 centralGaussian = Gaussian (genericReplicate (natVal @n Proxy) 0)
 
 evaluate :: Gaussian n -> [Float] -> Complex Float
 evaluate (Gaussian xs c a) ys = (a*) $ real $ exp (-norm2 (zipWith' (-) xs ys) / c)
+
+evaluates :: Gaussians n -> [Float] -> Complex Float
+evaluates gs xs = flatten $ lmap (flip evaluate xs) gs
 
 integral :: forall n . KnownNat n => Gaussian n -> Complex Float
 integral (Gaussian xs c a) = a * real (sqrt (c*pi) ^ natVal @n Proxy)
@@ -59,3 +71,9 @@ zipWith' _ [] [] = []
 zipWith' _ _ _ = error "Non-matching list lengths."
 
 deriving instance Ord a => Ord (Complex a)
+
+instance {-# OVERLAPS #-} Semilinear (Gaussian n) where
+    conj (Gaussian xs c a) = Gaussian xs c (conj a)
+
+instance KnownNat n => InnerProduct (Gaussian n) (Complex Float) where
+    dot g g' = integral $ multiply (conj g) g'

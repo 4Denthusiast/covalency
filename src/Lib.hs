@@ -69,4 +69,4 @@ handleEvent event w@(World inputState atoms orbs) = case inputState of
         _ -> w
 
 testOrbs :: Atoms n -> [Orbital]
-testOrbs = (:[]) . mconcat . map (single . (,())) . M.keys
+testOrbs = (:[]) . mconcat . map (single . (,0)) . M.keys
