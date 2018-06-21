@@ -1,6 +1,8 @@
-{-# LANGUAGE DataKinds     #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TupleSections #-}
-
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 module Lib(
     someFunc
 ) where
@@ -15,6 +17,8 @@ import Graphics.Gloss
 import Graphics.Gloss.Interface.IO.Interact
 
 import qualified Data.Map as M
+import Data.Monoid
+import GHC.TypeLits (KnownNat)
 import Debug.Trace
 
 someFunc :: IO ()
@@ -26,12 +30,12 @@ someFunc = interactIO
     ((return .) . handleEvent)
     (const (pure ()))
 
-data World = World InputState (Atoms 2) [Orbital]
+data World = World InputState (Atoms 3) [Orbital]
 
 data InputState = Typing String | Editing String
 
 viewScale :: Float
-viewScale = 400.0
+viewScale = 200.0
 
 viewLOD :: Int
 viewLOD = 4
@@ -42,14 +46,14 @@ emptyWorld = World (Typing []) M.empty [mempty]
 renderWorld :: World -> Picture
 renderWorld (World input atoms orbs) = pictures $ renderOrbitals atoms orbs : renderInput input : map (uncurry renderAtom) (M.toList atoms)
 
-renderAtom :: AtomLabel -> Atom 2 -> Picture
-renderAtom label (Atom [x,y] _) = Color white $ Translate (x*viewScale) (y*viewScale) $ Pictures [Scale 0.1 0.1 $ Text label, Circle 20]
+renderAtom :: AtomLabel -> Atom n -> Picture
+renderAtom label at = let (x:y:_) = atomPos at in Color white $ Translate (x*viewScale) (y*viewScale) $ Pictures [Scale 0.1 0.1 $ Text label, Circle 20]
 
 renderInput :: InputState -> Picture
 renderInput (Typing  s) = Color red   $ Translate (-390) (-390) $ Scale 0.2 0.2 $ Text ('>':s)
 renderInput (Editing s) = Color white $ Translate (-390) (-390) $ Scale 0.2 0.2 $ Text ('#':s)
 
-renderOrbitals :: Atoms 2 -> [Orbital] -> Picture
+renderOrbitals :: KnownNat n => Atoms n -> [Orbital] -> Picture
 renderOrbitals atoms [] = Blank
 renderOrbitals atoms (o:_) = Scale lodF lodF $ bitmapOfOrbital px px (viewScale / lodF) o atoms
     where px   = div 800 viewLOD
@@ -64,9 +68,15 @@ handleEvent event w@(World inputState atoms orbs) = case inputState of
         _ -> w
     (Editing s) -> case event of
         (EventKey (SpecialKey KeyEnter) Down _ _) -> World (Typing s) atoms orbs
-        (EventKey (MouseButton LeftButton) Down _ (x,y)) -> World inputState (M.insert s (emptyAtom [x/viewScale, y/viewScale] (length atoms)) atoms) orbs
+        (EventKey (MouseButton LeftButton) Down _ (x,y)) -> World inputState (M.insert s (emptyAtom [x/viewScale, y/viewScale, 0]) atoms) orbs
         (EventKey (Char 'f') Down _ _) -> World inputState atoms (testOrbs atoms)
+        (EventKey (Char '[') Down _ _) -> World inputState atoms (drop 40 orbs)
+        (EventKey (Char ']') Down _ _) -> World inputState atoms (last orbs : init orbs)
         _ -> w
 
-testOrbs :: Atoms n -> [Orbital]
-testOrbs = (:[]) . mconcat . map (single . (,0)) . M.keys
+testOrbs :: KnownNat n => Atoms n -> [Orbital]
+testOrbs ats = iterate (\o -> normalize $ reduce $ o <> Linear.scale (-0.001) (o >>= (nuclearHamiltonian ats M.!))) $ return ("",0)
+
+-- Temporary for testing.
+instance InnerProduct (AtomLabel, OrbitalLabel) Cplx where
+    dot a b = if a == b then 1 else 0

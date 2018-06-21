@@ -26,19 +26,19 @@ import Data.Complex
 import Data.List
 import GHC.TypeLits --(natVal, Nat, KnownNat)
 
-data Gaussian (n::Nat) = Gaussian [Float] Float (Complex Float) deriving (Eq, Ord, Show)
-type Gaussians (n::Nat) = Linear (Complex Float) (Gaussian n)
+data Gaussian (n::Nat) = Gaussian [Float] Float Cplx deriving (Eq, Ord, Show)
+type Gaussians (n::Nat) = Linear Cplx (Gaussian n)
 
-centralGaussian :: forall n . KnownNat n => Float -> Complex Float -> Gaussian n
+centralGaussian :: forall n . KnownNat n => Float -> Cplx -> Gaussian n
 centralGaussian = Gaussian (genericReplicate (natVal @n Proxy) 0)
 
-evaluate :: Gaussian n -> [Float] -> Complex Float
+evaluate :: Gaussian n -> [Float] -> Cplx
 evaluate (Gaussian xs c a) ys = (a*) $ real $ exp (-norm2 (zipWith' (-) xs ys) / c)
 
-evaluates :: Gaussians n -> [Float] -> Complex Float
-evaluates gs xs = flatten $ lmap (flip evaluate xs) gs
+evaluates :: Gaussians n -> [Float] -> Cplx
+evaluates gs xs = flatten $ flip evaluate xs <$> gs
 
-integral :: forall n . KnownNat n => Gaussian n -> Complex Float
+integral :: forall n . KnownNat n => Gaussian n -> Cplx
 integral (Gaussian xs c a) = a * real (sqrt (c*pi) ^ natVal @n Proxy)
 
 convolve :: forall n . KnownNat n => Gaussian n -> Gaussian n -> Gaussian n
@@ -53,7 +53,7 @@ multiply (Gaussian xs c a) (Gaussian xs' c' a') = Gaussian ys d (a * a' * real m
 shiftGauss :: [Float] -> Gaussian n -> Gaussian n
 shiftGauss dxs (Gaussian xs c a) = Gaussian (zipWith' (+) dxs xs) c a
 
-scaleGauss :: Complex Float -> Gaussian n -> Gaussian n
+scaleGauss :: Cplx -> Gaussian n -> Gaussian n
 scaleGauss a' (Gaussian xs c a) = Gaussian xs c (a*a')
 
 norm2 :: Num n => [n] -> n
@@ -75,5 +75,5 @@ deriving instance Ord a => Ord (Complex a)
 instance {-# OVERLAPS #-} Semilinear (Gaussian n) where
     conj (Gaussian xs c a) = Gaussian xs c (conj a)
 
-instance KnownNat n => InnerProduct (Gaussian n) (Complex Float) where
+instance KnownNat n => InnerProduct (Gaussian n) Cplx where
     dot g g' = integral $ multiply (conj g) g'

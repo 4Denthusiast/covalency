@@ -4,6 +4,9 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE DataKinds #-}
 module Potential(
+    Potential,
+    sphericalHarmonicFunction,
+    sphericalHarmonicPotential,
 ) where
 
 import Linear
@@ -13,7 +16,7 @@ import Data.Complex
 import GHC.TypeLits
 
 -- a distribution
-type Potential (n::Nat) = Gaussians n -> Complex Float
+type Potential (n::Nat) = Gaussians n -> Cplx
 
 -- The range of scales over which this function may have a significant value and variation.
 sizeRange :: Gaussians n -> (Float, Float)
@@ -29,7 +32,7 @@ sphericalHarmonicFunction (l', h') = Linear (map ((1,).g) [0..k])
     where d = 2 - natVal @n Proxy
           d' = div d 2
           l = l'*l' / 2
-          h = h'*h' * case d of { -1 -> 20.0; -2 -> 1.0; -3 -> 3.0}
+          h = h'*h' * case d of { -1 -> 20.0; -2 -> 1.0; -3 -> 3.0; _ -> error "Unsupported dimension"}
           k = ceiling $ log (h/l)
           g i = let x = l * exp (fromIntegral i) in centralGaussian (1/(1/x - 1/(l*exp(fromIntegral k+0.5)))) ((c i * s x) :+ 0)
           s :: Float -> Float

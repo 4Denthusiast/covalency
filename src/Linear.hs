@@ -4,40 +4,43 @@
 {-# LANGUAGE StandaloneDeriving #-}
 module Linear(
     Linear(..),
-    lmap,
     reduce,
     scale,
-    join,
     flatten,
-    single,
     Semilinear(..),
     InnerProduct(..),
     normalize,
+    Cplx,
 ) where
 
 import Data.List
 import Data.Monoid hiding ((<>))
 import Data.Semigroup
+import Control.Applicative
+import Control.Monad
+import Data.Bifunctor
 import Data.Complex
 
-data Linear f a where
-    Linear :: (Num f, Eq f, Ord a, Eq a) => [(f,a)] -> Linear f a
-
-deriving instance (Ord f, Ord a) => Ord (Linear f a)
-deriving instance (Eq  f, Eq  a) => Eq  (Linear f a)
-deriving instance (Show f, Show a) => Show (Linear f a)
-
-lmap :: (Ord b, Eq b) => (a -> b) -> Linear f a -> Linear f b
-lmap f (Linear xs) = reduce $ Linear $ map (\(n,x) -> (n,f x)) xs
+data Linear f a = Linear [(f,a)] deriving (Ord, Eq, Show)
 
 instance Semigroup (Linear f a) where
-    (Linear a) <> (Linear b) = reduce (Linear (a++b))
+    (Linear a) <> (Linear b) = Linear (a++b)
 
-instance (Num f, Eq f, Ord a, Eq a) => Monoid (Linear f a) where
+instance Monoid (Linear f a) where
     mempty = Linear []
     mappend = (<>)
 
-reduce :: Linear f a -> Linear f a
+instance Functor (Linear f) where
+    fmap f (Linear xs) = Linear $ map (second f) xs
+
+instance Num f => Applicative (Linear f) where
+    pure x = Linear [(1,x)]
+    liftA2 f (Linear xs) (Linear ys) = Linear [(a*b, f x y) | (a,x) <- xs, (b,y) <- ys]
+
+instance Num f => Monad (Linear f) where
+    (Linear xs) >>= f = mconcat $ map (\(a,x) -> scale a (f x)) xs
+
+reduce :: (Num f, Eq f, Ord a, Eq a) => Linear f a -> Linear f a
 reduce (Linear xs) = Linear $ foldr merge [] $ sortOn snd $ xs
     where merge (0,_) xs = xs
           merge x []     = [x]
@@ -46,18 +49,11 @@ reduce (Linear xs) = Linear $ foldr merge [] $ sortOn snd $ xs
               | m+n == 0  = xs
               | otherwise = (m+n,x):xs
 
-scale :: f -> Linear f a -> Linear f a
---scale 0 (Linear xs) = Linear []
+scale :: Num f => f -> Linear f a -> Linear f a
 scale a (Linear xs) = Linear $ map (\(n,x) -> (a*n, x)) xs
 
-join :: (Ord a, Eq a) => Linear f (Linear f a) -> Linear f a
-join (Linear xs) = mconcat $ map (uncurry scale) xs
-
-flatten :: Linear f f -> f
+flatten :: Num f => Linear f f -> f
 flatten (Linear xs) = sum $ map (uncurry (*)) xs
-
-single :: (Num f, Eq f, Ord a, Eq a) => a -> Linear f a
-single x = Linear [(1,x)]
 
 class Semilinear n where
     conj :: n -> n
@@ -71,8 +67,8 @@ instance {-# OVERLAPS #-} (Semilinear n, Semilinear a) => Semilinear (Linear n a
 instance {-# OVERLAPS #-} Semilinear n where
     conj = id
 
-almap :: (Ord b, Eq b, Semilinear f) => (a -> b) -> Linear f a -> Linear f b
-almap f (Linear xs) = reduce $ Linear $ map (\(n,x) -> (conj n, f x)) xs
+conj' :: Semilinear f => Linear f a -> Linear f a
+conj' (Linear xs) = Linear $ map (\(n,x) -> (conj n, x)) xs
 
 class InnerProduct a n where
     dot :: a -> a -> n
@@ -81,7 +77,9 @@ instance Num n => InnerProduct n n where
     dot = (*) . conj
 
 instance (InnerProduct a n, Num n, Ord n, Ord a, Eq a) => InnerProduct (Linear n a) n where
-    dot x y = flatten $ join $ almap (flip lmap y . dot) x
+    dot x y = flatten $ dot <$> conj' x <*> y
 
-normalize :: InnerProduct (Linear n a) n, Floating n => Linear n a -> Linear n a
+normalize :: (InnerProduct a n, Num n, Ord n, Ord a, Eq a, Floating n) => Linear n a -> Linear n a
 normalize l = scale (1/sqrt (dot l l)) l
+
+type Cplx = Complex Float
