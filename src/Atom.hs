@@ -1,5 +1,6 @@
 {-# LANGUAGE DataKinds      #-}
 {-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE TypeApplications #-}
 module Atom(
     Atom(..),
     OrbitalLabel,
@@ -32,7 +33,7 @@ type Atoms (n::Nat) = M.Map AtomLabel (Atom n)
 emptyAtom :: KnownNat n => [Float] -> Atom n
 emptyAtom xs = Atom
         xs
-        (M.fromList $ map (\i -> (i,normalize $ return $ centralGaussian (e i) 1)) [-4..4])
+        (M.fromList $ map (\i -> (i,normalize @Cplx $ return $ centralGaussian (e i) 1)) [-4..4])
         (negate . sphericalHarmonicPotential)
         (M.fromList $ (4,mempty) : map (\i -> (i,Linear [(e (-2*i),i),(-e (-2*i),i+1)])) [-4..3])
     where e :: Floating a => Int -> a
@@ -43,8 +44,8 @@ evalAtomOrb (Atom ax os _ _) ol xs = evaluates o xs'
     where o   = os M.! ol
           xs' = zipWith (-) xs ax
 
-atomOrbitalsGlobal :: Atom n -> M.Map OrbitalLabel (Gaussians n)
+atomOrbitalsGlobal :: KnownNat n => Atom n -> M.Map OrbitalLabel (Gaussians n)
 atomOrbitalsGlobal at = (shiftGauss (atomPos at) <$>) <$> (atomOrbitals at)
 
-atomPotentialGlobal :: Atom n -> Gaussians n -> Cplx
+atomPotentialGlobal :: KnownNat n => Atom n -> Gaussians n -> Cplx
 atomPotentialGlobal at = atomPotential at . (shiftGauss (negate <$> atomPos at) <$>)

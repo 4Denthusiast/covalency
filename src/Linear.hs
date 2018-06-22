@@ -2,12 +2,17 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 module Linear(
     Linear(..),
     reduce,
     scale,
     flatten,
     Semilinear(..),
+    Vector(..),
+    towerScale,
     InnerProduct(..),
     normalize,
     Cplx,
@@ -52,34 +57,50 @@ reduce (Linear xs) = Linear $ foldr merge [] $ sortOn snd $ xs
 scale :: Num f => f -> Linear f a -> Linear f a
 scale a (Linear xs) = Linear $ map (\(n,x) -> (a*n, x)) xs
 
-flatten :: Num f => Linear f f -> f
-flatten (Linear xs) = sum $ map (uncurry (*)) xs
+flatten :: forall f a. (Vector f a, Monoid a) => Linear f a -> a
+flatten (Linear xs) = mconcat $ map (uncurry (*~)) xs
 
 class Semilinear n where
     conj :: n -> n
+    conj = id
 
-instance {- OVERLAPS #-} Num n => Semilinear (Complex n) where
+instance Semilinear Float where
+
+instance Num n => Semilinear (Complex n) where
     conj = conjugate
 
-instance {-# OVERLAPS #-} (Semilinear n, Semilinear a) => Semilinear (Linear n a) where
+instance (Semilinear n, Semilinear a) => Semilinear (Linear n a) where
     conj (Linear xs) = Linear (map (\(n,x) -> (conj n, conj x)) xs)
-
-instance {-# OVERLAPS #-} Semilinear n where
-    conj = id
 
 conj' :: Semilinear f => Linear f a -> Linear f a
 conj' (Linear xs) = Linear $ map (\(n,x) -> (conj n, x)) xs
 
-class InnerProduct a n where
-    dot :: a -> a -> n
+class Num f => Vector f a where
+    infixr 7 *~
+    (*~) :: f -> a -> a
 
-instance Num n => InnerProduct n n where
+instance Num f => Vector f f where (*~) = (*)
+instance Num f => Vector f (Linear f a) where (*~) = scale
+instance Floating f => Vector f (Complex f) where a *~ b = (a *) <$> b
+
+towerScale :: forall a f b. (Num a, Vector f a, Vector a b) => f -> b -> b
+towerScale f b = (f *~ (1 :: a)) *~ b
+
+instance Semigroup Float where (<>)   = (+)
+instance Monoid    Float where {mappend = (<>); mempty = 0}
+instance RealFloat a => Semigroup (Complex a) where (<>)   = (+)
+instance RealFloat a => Monoid    (Complex a) where {mappend = (<>); mempty = 0}
+
+class InnerProduct f a where
+    dot :: a -> a -> f
+
+instance (Num f, Semilinear f) => InnerProduct f f where
     dot = (*) . conj
 
-instance (InnerProduct a n, Num n, Ord n, Ord a, Eq a) => InnerProduct (Linear n a) n where
+instance (InnerProduct f a, Num f, Ord f, Semilinear f, Monoid f) => InnerProduct f (Linear f a) where
     dot x y = flatten $ dot <$> conj' x <*> y
 
-normalize :: (InnerProduct a n, Num n, Ord n, Ord a, Eq a, Floating n) => Linear n a -> Linear n a
-normalize l = scale (1/sqrt (dot l l)) l
+normalize :: forall f a. (InnerProduct f a, Vector f a, Floating f) => a -> a
+normalize l = (1/sqrt (dot @f l l)) *~ l
 
 type Cplx = Complex Float

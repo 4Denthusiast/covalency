@@ -38,7 +38,7 @@ nuclearHamiltonian ats = M.unions $ map atomH (M.toList ats)
           allOrbs = concatMap (\(al,at) -> map (first (al,)) $ M.toList $ atomOrbitalsGlobal at) (M.toList ats)
           totalPotential o = sum $ map (flip atomPotentialGlobal o) (M.elems ats)
 
-overlaps :: (InnerProduct v Cplx, Ord a) => [(a,v)] -> Matrix a
+overlaps :: (InnerProduct Cplx v, Ord a) => [(a,v)] -> Matrix a
 overlaps xs = M.fromList $ flip map xs (second $ \x -> Linear (map (\(l,x') -> (dot x x',l)) xs))
 
 invert :: (Ord a) => Matrix a -> Matrix a

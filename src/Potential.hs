@@ -34,7 +34,7 @@ sphericalHarmonicFunction (l', h') = Linear (map ((1,).g) [0..k])
           l = l'*l' / 2
           h = h'*h' * case d of { -1 -> 20.0; -2 -> 1.0; -3 -> 3.0; _ -> error "Unsupported dimension"}
           k = ceiling $ log (h/l)
-          g i = let x = l * exp (fromIntegral i) in centralGaussian (1/(1/x - 1/(l*exp(fromIntegral k+0.5)))) ((c i * s x) :+ 0)
+          g i = let x = l * exp (fromIntegral i) in centralSphereGaussian (1/(1/x - 1/(l*exp(fromIntegral k+0.5)))) ((c i * s x) :+ 0)
           s :: Float -> Float
           s x = if even d then x ^^ d' / fac (-1-fromIntegral d') else x ^^ d' * sqrt x / fac (-1.5-fromIntegral d')
           c i = if i == 0 then 1 / (1 - exp (-1)) else 1 -- Correction to give the region around 0 the correct integral, even if it has the wrong shape.

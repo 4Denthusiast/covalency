@@ -3,6 +3,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE TypeApplications #-}
 module Lib(
     someFunc
 ) where
@@ -75,8 +76,8 @@ handleEvent event w@(World inputState atoms orbs) = case inputState of
         _ -> w
 
 testOrbs :: KnownNat n => Atoms n -> [Orbital]
-testOrbs ats = iterate (\o -> normalize $ reduce $ o <> Linear.scale (-0.001) (o >>= (nuclearHamiltonian ats M.!))) $ return ("",0)
+testOrbs ats = iterate (\o -> normalize @Cplx $ reduce $ o <> Linear.scale (-0.001) (o >>= (nuclearHamiltonian ats M.!))) $ return ("",0)
 
 -- Temporary for testing.
-instance InnerProduct (AtomLabel, OrbitalLabel) Cplx where
+instance InnerProduct Cplx (AtomLabel, OrbitalLabel) where
     dot a b = if a == b then 1 else 0

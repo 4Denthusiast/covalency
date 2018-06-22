@@ -9,6 +9,7 @@ module Gaussian(
     Gaussian(..),
     Gaussians,
     centralGaussian,
+    centralSphereGaussian,
     evaluate,
     evaluates,
     integral,
@@ -21,40 +22,62 @@ module Gaussian(
 ) where
 
 import Linear
+import Polynomial (Polynomial)
+import qualified Polynomial as P
 
 import Data.Complex
 import Data.List
 import GHC.TypeLits --(natVal, Nat, KnownNat)
 
-data Gaussian (n::Nat) = Gaussian [Float] Float Cplx deriving (Eq, Ord, Show)
+data Gaussian (n::Nat) = Gaussian [Float] Float (Polynomial n Cplx) deriving (Eq, Show)
 type Gaussians (n::Nat) = Linear Cplx (Gaussian n)
 
-centralGaussian :: forall n . KnownNat n => Float -> Cplx -> Gaussian n
+centralGaussian :: forall n . KnownNat n => Float -> (Polynomial n Cplx) -> Gaussian n
 centralGaussian = Gaussian (genericReplicate (natVal @n Proxy) 0)
 
+centralSphereGaussian :: KnownNat n => Float -> Cplx -> Gaussian n
+centralSphereGaussian c a = centralGaussian c (P.constant a)
+
 evaluate :: Gaussian n -> [Float] -> Cplx
-evaluate (Gaussian xs c a) ys = (a*) $ real $ exp (-norm2 (zipWith' (-) xs ys) / c)
+evaluate (Gaussian xs c a) ys = exp (-norm2 ys' / c) *~ P.evaluate' ys' a
+    where ys' = zipWith' (-) ys xs
 
 evaluates :: Gaussians n -> [Float] -> Cplx
 evaluates gs xs = flatten $ flip evaluate xs <$> gs
 
 integral :: forall n . KnownNat n => Gaussian n -> Cplx
-integral (Gaussian xs c a) = a * real (sqrt (c*pi) ^ natVal @n Proxy)
+integral (Gaussian xs c a) = (sqrt (c*pi) ^ natVal @n Proxy) *~ ai
+    where ai = P.monomialSum' monCoeff a
+          monCoeff es = if any odd es then 0 else product $ map powerCoeff es
+          powerCoeff 0 = 1
+          powerCoeff n = -c / 2 * (fromIntegral n - 1) * powerCoeff (n-2) --Integrate by parts
 
 convolve :: forall n . KnownNat n => Gaussian n -> Gaussian n -> Gaussian n
-convolve (Gaussian xs c a) (Gaussian xs' c' a') = Gaussian (zipWith' (+) xs xs') (c + c') (a * a' * real (sqrt (pi/(1/c+1/c')) ^ natVal @n Proxy))
+convolve (Gaussian xs c a) (Gaussian xs' c' a') = Gaussian (zipWith' (+) xs xs') (c + c') (((sqrt (pi/(1/c+1/c'))) ^ natVal @n Proxy) *~ a'')
+    where aShift :: Polynomial n (Polynomial n Cplx)
+          aShift = P.evaluate (xpky (c/(c+c'))) a * P.evaluate (map negate $ xpky (-c'/(c+c'))) a'
+          xpky :: Float -> [Polynomial n (Polynomial n Cplx)]
+          xpky k = map (\i -> P.variable i + k *~ (P.constant (P.variable i))) [0..]
+          a''    = P.monomialSum' (\es -> if any odd es then 0 else product $ map powerCoeff es) aShift
+          powerCoeff 0 = 1
+          powerCoeff n = -c*c'/(c+c') / 2 * (fromIntegral n - 1) * powerCoeff (n-2)
 
-multiply :: Gaussian n -> Gaussian n -> Gaussian n
-multiply (Gaussian xs c a) (Gaussian xs' c' a') = Gaussian ys d (a * a' * real m)
+multiply :: KnownNat n => Gaussian n -> Gaussian n -> Gaussian n
+multiply (Gaussian xs c a) (Gaussian xs' c' a') = Gaussian ys d a''
     where d  = 1/(1/c + 1/c')
           ys = zipWith' (\x x' -> d * (x/c + x'/c')) xs xs'
           m  = exp (norm2 ys / d - norm2 xs / c - norm2 xs' / c')
+          diff y x = real (y-x)
+          a'' = P.constant (real m) * shiftPoly (zipWith diff ys xs) a * shiftPoly (zipWith diff ys xs') a'
 
-shiftGauss :: [Float] -> Gaussian n -> Gaussian n
+shiftGauss :: KnownNat n => [Float] -> Gaussian n -> Gaussian n
 shiftGauss dxs (Gaussian xs c a) = Gaussian (zipWith' (+) dxs xs) c a
 
-scaleGauss :: Cplx -> Gaussian n -> Gaussian n
-scaleGauss a' (Gaussian xs c a) = Gaussian xs c (a*a')
+shiftPoly :: (Num a, Eq a, KnownNat n) => [a] -> Polynomial n a -> Polynomial n a
+shiftPoly as p = P.evaluate (zipWith (\a i -> P.variable i + P.constant a) as [0..]) p
+
+scaleGauss :: KnownNat n => Cplx -> Gaussian n -> Gaussian n
+scaleGauss a' (Gaussian xs c a) = Gaussian xs c (a * P.constant a')
 
 norm2 :: Num n => [n] -> n
 norm2 = sum . map (^2)
@@ -72,8 +95,8 @@ zipWith' _ _ _ = error "Non-matching list lengths."
 
 deriving instance Ord a => Ord (Complex a)
 
-instance {-# OVERLAPS #-} Semilinear (Gaussian n) where
+instance Semilinear (Gaussian n) where
     conj (Gaussian xs c a) = Gaussian xs c (conj a)
 
-instance KnownNat n => InnerProduct (Gaussian n) Cplx where
+instance KnownNat n => InnerProduct Cplx (Gaussian n) where
     dot g g' = integral $ multiply (conj g) g'
