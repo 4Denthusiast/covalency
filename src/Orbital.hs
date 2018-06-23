@@ -3,8 +3,13 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 module Orbital(
     Orbital(..),
+    Matrix,
     evalOrbital,
     nuclearHamiltonian,
+    invert,
+    tabulate,
+    swap,
+    traceShowMatId,
 ) where
 
 import Linear
@@ -14,11 +19,13 @@ import Atom
 
 import qualified Data.Map as M
 import Data.Maybe
+import Data.List
 import Data.Complex
 import Data.Bifunctor
 import Data.Monoid
 import Control.Applicative
 import GHC.TypeLits
+import Debug.Trace
 
 type Orbital = Linear Cplx (AtomLabel, OrbitalLabel)
 type Matrix a = M.Map a (Linear Cplx a)
@@ -27,11 +34,11 @@ evalOrbital :: Atoms n -> Orbital -> [Float] -> Cplx
 evalOrbital as o xs = flatten $ (\(al, ol) -> evalAtomOrb (as M.! al) ol xs) <$> o
 
 nuclearHamiltonian :: KnownNat n => Atoms n -> Matrix (AtomLabel, OrbitalLabel)
-nuclearHamiltonian ats = M.unions $ map atomH (M.toList ats)
+nuclearHamiltonian ats = traceShowMatId $ M.unions $ map atomH (M.toList ats)
     where --atomH :: (AtomLabel, Atom n) -> Matrix (AtomLabel, OrbitalLabel)
           atomH (al, at) = M.mapKeysMonotonic (al,) $ M.mapWithKey (\ol o -> orbH ol o (atomKineticTerm at M.! ol) al) (atomOrbitalsGlobal at)
           --orbH :: OrbitalLabel -> Gaussians n -> Linear Cplx OrbitalLabel -> AtomLabel -> Linear Cplx (AtomLabel, OrbitalLabel)
-          orbH ol o k al = fmap (al,) k <> approximate (overlapsH o)
+          orbH ol o k al = reduce $ fmap (al,) k <> approximate (overlapsH o)
           overlapsH o = Linear $ flip map allOrbs (swap . second (totalPotential . liftA2 multiply o))
           approximate :: Linear Cplx (AtomLabel, OrbitalLabel) -> Orbital
           approximate o = trim $ reduce $ o >>= ((trim <$> invert (overlaps allOrbs)) M.!)
@@ -60,3 +67,17 @@ tabulate :: (Ord k) => [k] -> (k -> a) -> M.Map k a
 tabulate ks f = M.fromList $ map (\k -> (k, f k)) ks
 
 swap (x,y) = (y,x)
+
+showMatrix :: (Show a, Ord a) => Matrix a -> String
+showMatrix m = intercalate "\n" $ zipWith (++) xsl $ map (intercalate ", ") $ transpose $ map registerColumn $ zipWith ((:) . show) xs $ map (map (show . realPart)) cs
+    where xs = M.keys m
+          cs = map (linearToList xs . reduce) $ M.elems m
+          linearToList [] (Linear []) = []
+          linearToList (x':xs) l@(Linear ((a,x):ls))
+              | x == x'   = a:linearToList xs (Linear ls)
+              | otherwise = 0:linearToList xs l
+          registerColumn c = let n = maximum $ map length c in map (take n . (++ repeat ' ')) c
+          xsl = registerColumn $ "" : map ((++": ") . show) xs
+
+traceShowMatId :: (Show a, Ord a) => Matrix a -> Matrix a
+traceShowMatId m = trace (showMatrix m) m

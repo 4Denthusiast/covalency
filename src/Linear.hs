@@ -76,12 +76,13 @@ conj' :: Semilinear f => Linear f a -> Linear f a
 conj' (Linear xs) = Linear $ map (\(n,x) -> (conj n, x)) xs
 
 class Num f => Vector f a where
-    infixr 7 *~
+    infixl 7 *~
     (*~) :: f -> a -> a
 
 instance Num f => Vector f f where (*~) = (*)
 instance Num f => Vector f (Linear f a) where (*~) = scale
 instance Floating f => Vector f (Complex f) where a *~ b = (a *) <$> b
+instance Vector Int Cplx where n *~ x = fromIntegral n * x
 
 towerScale :: forall a f b. (Num a, Vector f a, Vector a b) => f -> b -> b
 towerScale f b = (f *~ (1 :: a)) *~ b

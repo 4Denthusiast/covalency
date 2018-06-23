@@ -17,6 +17,7 @@ module Gaussian(
     multiply,
     shiftGauss,
     scaleGauss,
+    laplacian,
     norm2,
     Proxy(..),
 ) where
@@ -50,7 +51,7 @@ integral (Gaussian xs c a) = (sqrt (c*pi) ^ natVal @n Proxy) *~ ai
     where ai = P.monomialSum' monCoeff a
           monCoeff es = if any odd es then 0 else product $ map powerCoeff es
           powerCoeff 0 = 1
-          powerCoeff n = -c / 2 * (fromIntegral n - 1) * powerCoeff (n-2) --Integrate by parts
+          powerCoeff n = c / 2 * (fromIntegral n - 1) * powerCoeff (n-2) --Integrate by parts
 
 convolve :: forall n . KnownNat n => Gaussian n -> Gaussian n -> Gaussian n
 convolve (Gaussian xs c a) (Gaussian xs' c' a') = Gaussian (zipWith' (+) xs xs') (c + c') (((sqrt (pi/(1/c+1/c'))) ^ natVal @n Proxy) *~ a'')
@@ -60,7 +61,7 @@ convolve (Gaussian xs c a) (Gaussian xs' c' a') = Gaussian (zipWith' (+) xs xs')
           xpky k = map (\i -> P.variable i + k *~ (P.constant (P.variable i))) [0..]
           a''    = P.monomialSum' (\es -> if any odd es then 0 else product $ map powerCoeff es) aShift
           powerCoeff 0 = 1
-          powerCoeff n = -c*c'/(c+c') / 2 * (fromIntegral n - 1) * powerCoeff (n-2)
+          powerCoeff n = c*c'/(c+c') / 2 * (fromIntegral n - 1) * powerCoeff (n-2)
 
 multiply :: KnownNat n => Gaussian n -> Gaussian n -> Gaussian n
 multiply (Gaussian xs c a) (Gaussian xs' c' a') = Gaussian ys d a''
@@ -78,6 +79,27 @@ shiftPoly as p = P.evaluate (zipWith (\a i -> P.variable i + P.constant a) as [0
 
 scaleGauss :: KnownNat n => Cplx -> Gaussian n -> Gaussian n
 scaleGauss a' (Gaussian xs c a) = Gaussian xs c (a * P.constant a')
+
+laplacian :: forall n. KnownNat n => Gaussian n -> Gaussian n
+{-
+laplacian (Gaussian xs c a) = Gaussian xs c $ P.monomialSum monLap a
+    where monLap es = sum $ zipWith3 dir (inits es) es (tail $ tails es)
+          dir :: [Int] -> Int -> [Int] -> Polynomial n Cplx
+          dir h e t =
+              e*(e-1)                  *~ mon (h++(e-2):t)
+              - (2+fromIntegral e*4)/c *~ mon (h++ e   :t)
+              + 4/(c*c)                *~ mon (h++(e+2):t)
+          mon es = mon' 0 es
+          mon' n (e:es) = if e < 0 then 0 else (P.variable n ^ e) * mon' (n+1) es
+          mon' _ [] = 1
+-}
+laplacian (Gaussian xs c a) = Gaussian xs c $ sum $ map (\i -> d i (d i a)) [0..fromIntegral $ natVal @n Proxy - 1]
+    where d :: Int -> Polynomial n Cplx -> Polynomial n Cplx
+          d i p = P.monomialSum (dMon . splitAt i) p - (2 / c) *~ p * P.variable i
+          dMon (h,e:t) = fromIntegral e * mon (h ++ (e-1) : t)
+          mon es = mon' 0 es
+          mon' n (e:es) = if e < 0 then 0 else (P.variable n ^ e) * mon' (n+1) es
+          mon' _ [] = 1
 
 norm2 :: Num n => [n] -> n
 norm2 = sum . map (^2)
