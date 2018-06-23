@@ -4,7 +4,6 @@ module Orbital(
     invert,
     tabulate,
     swap,
-    traceShowMatId,
 ) where
 
 import Linear
@@ -26,5 +25,3 @@ invert :: (Ord a) => Matrix a -> Matrix a
 tabulate :: (Ord k) => [k] -> (k -> a) -> M.Map k a
 
 swap :: (x,y) -> (y,x)
-
-traceShowMatId :: (Show a, Ord a) => Matrix a -> Matrix a

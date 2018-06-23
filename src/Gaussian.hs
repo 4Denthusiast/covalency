@@ -81,18 +81,6 @@ scaleGauss :: KnownNat n => Cplx -> Gaussian n -> Gaussian n
 scaleGauss a' (Gaussian xs c a) = Gaussian xs c (a * P.constant a')
 
 laplacian :: forall n. KnownNat n => Gaussian n -> Gaussian n
-{-
-laplacian (Gaussian xs c a) = Gaussian xs c $ P.monomialSum monLap a
-    where monLap es = sum $ zipWith3 dir (inits es) es (tail $ tails es)
-          dir :: [Int] -> Int -> [Int] -> Polynomial n Cplx
-          dir h e t =
-              e*(e-1)                  *~ mon (h++(e-2):t)
-              - (2+fromIntegral e*4)/c *~ mon (h++ e   :t)
-              + 4/(c*c)                *~ mon (h++(e+2):t)
-          mon es = mon' 0 es
-          mon' n (e:es) = if e < 0 then 0 else (P.variable n ^ e) * mon' (n+1) es
-          mon' _ [] = 1
--}
 laplacian (Gaussian xs c a) = Gaussian xs c $ sum $ map (\i -> d i (d i a)) [0..fromIntegral $ natVal @n Proxy - 1]
     where d :: Int -> Polynomial n Cplx -> Polynomial n Cplx
           d i p = P.monomialSum (dMon . splitAt i) p - (2 / c) *~ p * P.variable i

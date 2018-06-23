@@ -73,13 +73,12 @@ handleEvent event w@(World inputState atoms orbs) = case inputState of
         (EventKey (MouseButton LeftButton) Down _ (x,y)) -> World inputState (M.insert s (emptyAtom [x/viewScale, y/viewScale, 0]) atoms) orbs
         (EventKey (Char 'f') Down _ _) -> World inputState atoms (testOrbs atoms)
         (EventKey (Char '=') Down _ _) -> World inputState atoms (drop 40 orbs)
-        (EventKey (Char '[') Down _ _) -> traceShow (head orbs) $ World inputState atoms (tail orbs ++ [head orbs])
+        (EventKey (Char '[') Down _ _) -> World inputState atoms (tail orbs ++ [head orbs])
         (EventKey (Char ']') Down _ _) -> World inputState atoms (last orbs : init orbs)
         _ -> w
 
 testOrbs :: KnownNat n => Atoms n -> [Orbital]
-testOrbs ats = {-map (return . ("",)) [-6..8]-} --map (\(i,o) -> exp (2*fromIntegral i :: Cplx) *~ fmap ("",) o) $ M.toList $ traceShowMatId $ atomKineticTerm $ ats M.! ""
-  iterate (\o -> normalize @Cplx $ reduce $ o <> Linear.scale (-(0.001:+0.000)) (o >>= (nuclearHamiltonian ats M.!))) $ return ("",0)
+testOrbs ats = iterate (\o -> normalize @Cplx $ reduce $ o <> Linear.scale (-(0.001:+0.000)) (o >>= (nuclearHamiltonian ats M.!))) $ return ("",0)
 
 -- Temporary for testing.
 instance InnerProduct Cplx (AtomLabel, OrbitalLabel) where

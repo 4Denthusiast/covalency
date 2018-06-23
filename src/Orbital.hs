@@ -9,7 +9,6 @@ module Orbital(
     invert,
     tabulate,
     swap,
-    traceShowMatId,
 ) where
 
 import Linear
@@ -34,7 +33,7 @@ evalOrbital :: Atoms n -> Orbital -> [Float] -> Cplx
 evalOrbital as o xs = flatten $ (\(al, ol) -> evalAtomOrb (as M.! al) ol xs) <$> o
 
 nuclearHamiltonian :: KnownNat n => Atoms n -> Matrix (AtomLabel, OrbitalLabel)
-nuclearHamiltonian ats = traceShowMatId $ M.unions $ map atomH (M.toList ats)
+nuclearHamiltonian ats = M.unions $ map atomH (M.toList ats)
     where --atomH :: (AtomLabel, Atom n) -> Matrix (AtomLabel, OrbitalLabel)
           atomH (al, at) = M.mapKeysMonotonic (al,) $ M.mapWithKey (\ol o -> orbH ol o (atomKineticTerm at M.! ol) al) (atomOrbitalsGlobal at)
           --orbH :: OrbitalLabel -> Gaussians n -> Linear Cplx OrbitalLabel -> AtomLabel -> Linear Cplx (AtomLabel, OrbitalLabel)
