@@ -13,6 +13,7 @@ import Gaussian
 import Atom
 import Orbital
 import Render
+import Eigen
 
 import Graphics.Gloss
 import Graphics.Gloss.Interface.IO.Interact
@@ -78,8 +79,4 @@ handleEvent event w@(World inputState atoms orbs) = case inputState of
         _ -> w
 
 testOrbs :: KnownNat n => Atoms n -> [Orbital]
-testOrbs ats = iterate (\o -> normalize @Cplx $ reduce $ o <> Linear.scale (-(0.001:+0.000)) (o >>= (nuclearHamiltonian ats M.!))) $ return ("",0)
-
--- Temporary for testing.
-instance InnerProduct Cplx (AtomLabel, OrbitalLabel) where
-    dot a b = if a == b then 1 else 0
+testOrbs ats = allEigenvecs (nuclearHamiltonian ats) $ return ("",0)
