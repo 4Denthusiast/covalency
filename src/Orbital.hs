@@ -7,8 +7,10 @@ module Orbital(
     evalOrbital,
     nuclearHamiltonian,
     invert,
+    doInvert,
     tabulate,
     swap,
+    showMatrix,
 ) where
 
 import Linear
@@ -19,6 +21,7 @@ import Atom
 import qualified Data.Map as M
 import Data.Maybe
 import Data.List
+import Data.Function
 import Data.Complex
 import Data.Bifunctor
 import Data.Monoid
@@ -29,8 +32,8 @@ import Debug.Trace
 type Orbital = Linear Cplx (AtomLabel, OrbitalLabel)
 type Matrix a = M.Map a (Linear Cplx a)
 
-evalOrbital :: Atoms n -> Orbital -> [Float] -> Cplx
-evalOrbital as o xs = flatten $ (\(al, ol) -> evalAtomOrb (as M.! al) ol xs) <$> o
+evalOrbital :: KnownNat n => Atoms n -> Orbital -> Gaussians n
+evalOrbital as o = reduce $ o >>= (\(al,ol) -> atomOrbitalsGlobal (as M.! al) M.! ol)
 
 nuclearHamiltonian :: KnownNat n => Atoms n -> Matrix (AtomLabel, OrbitalLabel)
 nuclearHamiltonian ats = M.unions $ map atomH (M.toList ats)
@@ -40,23 +43,31 @@ nuclearHamiltonian ats = M.unions $ map atomH (M.toList ats)
           orbH ol o k al = reduce $ fmap (al,) k <> approximate (overlapsH o)
           overlapsH o = Linear $ flip map allOrbs (swap . second (totalPotential . liftA2 multiply o))
           approximate :: Linear Cplx (AtomLabel, OrbitalLabel) -> Orbital
-          approximate o = trim $ reduce $ o >>= ((trim <$> invert (overlaps allOrbs)) M.!)
+          approximate o = trim $ reduce $ o >>= ((trim <$> doInvert (overlaps allOrbs)) M.!)
           allOrbs = concatMap (\(al,at) -> map (first (al,)) $ M.toList $ atomOrbitalsGlobal at) (M.toList ats)
           totalPotential o = sum $ map (flip atomPotentialGlobal o) (M.elems ats)
 
 overlaps :: (InnerProduct Cplx v, Ord a) => [(a,v)] -> Matrix a
 overlaps xs = M.fromList $ flip map xs (second $ \x -> Linear (map (\(l,x') -> (dot x x',l)) xs))
 
-invert :: (Ord a) => Matrix a -> Matrix a
+doInvert :: forall a. (Ord a) => Matrix a -> Matrix a
+doInvert = maybe (error "Singular matrix") id . invert
+
+invert :: forall a. (Ord a) => Matrix a -> Maybe (Matrix a)
 invert m0 = invert' m0 m0' xs0
     where xs0 = M.keys m0
-          m0' = tabulate xs0 return
-          invert' m m' [] = m'
+          m0' = tabulate xs0 return :: Matrix a
+          invert' :: Matrix a -> Matrix a -> [a] -> Maybe (Matrix a)
+          invert' m m' [] = Just m'
           invert' m m' (x:xs) =
-              let k y = if x /= y then return y else invertCol (m M.! x) x
-                  k' = reduce . (>>= k)
-              in invert' (k' <$> m) (k' <$> m') xs
-          invertCol (Linear xs) x = let ax = fromJust $ lookup x $ map swap xs in Linear ((1/ax,x):map (first (/(-ax))) (filter ((/=x).snd) xs))
+              let v = m M.! x
+                  (Linear vl) = v
+                  (a, y) = maximumBy (on compare (magnitude . fst)) $ dropWhile ((<x).snd) vl ++ [(0,error "singular matrix")]
+                  f z = if z == x then y else if z == y then x else z
+                  k :: a -> Linear Cplx a
+                  k z = if x /= z then return z else (1+1/a) *~ return x <> (-(1/a)) *~ (f <$> v)
+                  k' = reduce . (>>= k) . fmap f
+              in if a == 0 then Nothing else invert' (k' <$> m) (k' <$> m') xs
 
 trim :: (Fractional f, Ord f) => Linear f a -> Linear f a
 trim (Linear xs) = Linear $ filter ((>threshold) . abs . fst) xs
@@ -72,6 +83,7 @@ showMatrix m = intercalate "\n" $ zipWith (++) xsl $ map (intercalate ", ") $ tr
     where xs = M.keys m
           cs = map (linearToList xs . reduce) $ M.elems m
           linearToList [] (Linear []) = []
+          linearToList xs (Linear []) = map (const 0) xs
           linearToList (x':xs) l@(Linear ((a,x):ls))
               | x == x'   = a:linearToList xs (Linear ls)
               | otherwise = 0:linearToList xs l

@@ -2,6 +2,7 @@
 module Orbital(
     Matrix,
     invert,
+    doInvert,
     tabulate,
     swap,
 ) where
@@ -20,7 +21,9 @@ type Matrix a = M.Map a (Linear Cplx a)
 
 overlaps :: (InnerProduct Cplx v, Ord a) => [(a,v)] -> Matrix a
 
-invert :: (Ord a) => Matrix a -> Matrix a
+invert :: (Ord a) => Matrix a -> Maybe (Matrix a)
+
+doInvert :: (Ord a) => Matrix a -> Matrix a
 
 tabulate :: (Ord k) => [k] -> (k -> a) -> M.Map k a
 

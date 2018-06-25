@@ -25,11 +25,11 @@ import Data.Semigroup
 import GHC.TypeLits --(natVal, Nat, KnownNat)
 
 -- Polynomials in n variables.
-data Polynomial (n :: Nat) a = Polynomial [Monomial n a] deriving (Eq)
+data Polynomial (n :: Nat) a = Polynomial [Monomial n a] deriving (Eq, Ord)
 data Monomial   (n :: Nat) a = Monomial{
     monCoefficient :: a,
     monExponents   :: [Int]
-} deriving (Eq)
+} deriving (Eq, Ord)
 
 monomialTimes :: Num a => Monomial n a -> Monomial n a -> Monomial n a
 monomialTimes (Monomial x ex) (Monomial y ey) = Monomial (x*y) (zipWith (+) ex ey)

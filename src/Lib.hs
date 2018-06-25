@@ -79,4 +79,4 @@ handleEvent event w@(World inputState atoms orbs) = case inputState of
         _ -> w
 
 testOrbs :: KnownNat n => Atoms n -> [Orbital]
-testOrbs ats = allEigenvecs (nuclearHamiltonian ats) $ return ("",0)
+testOrbs ats = negativeEigenvecsFrom (nuclearHamiltonian ats) (-9)

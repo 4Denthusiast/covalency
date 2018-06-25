@@ -30,7 +30,7 @@ import Data.Complex
 import Data.List
 import GHC.TypeLits --(natVal, Nat, KnownNat)
 
-data Gaussian (n::Nat) = Gaussian [Float] Float (Polynomial n Cplx) deriving (Eq, Show)
+data Gaussian (n::Nat) = Gaussian [Float] Float (Polynomial n Cplx) deriving (Eq, Show, Ord)
 type Gaussians (n::Nat) = Linear Cplx (Gaussian n)
 
 centralGaussian :: forall n . KnownNat n => Float -> (Polynomial n Cplx) -> Gaussian n

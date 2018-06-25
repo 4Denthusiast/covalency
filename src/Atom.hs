@@ -55,6 +55,6 @@ atomPotentialGlobal at = atomPotential at . (shiftGauss (negate <$> atomPos at) 
 
 addKinetic :: KnownNat n => Atom n -> Atom n
 addKinetic at = at{atomKineticTerm = (decompose . ((-0.5::Cplx)*~) . fmap laplacian) <$> atomOrbitals at}
-    where decompose gs = reduce $ (invert allOverlaps M.!) =<< overlaps gs
+    where decompose gs = reduce $ (doInvert allOverlaps M.!) =<< overlaps gs
           overlaps gs  = Linear (map swap $ M.toList $ dot gs <$> (atomOrbitals at))
           allOverlaps  = overlaps <$> atomOrbitals at
