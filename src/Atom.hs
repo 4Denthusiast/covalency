@@ -32,14 +32,14 @@ type L = Int
 type M = Int
 type OrbitalLabel = (Int,L,M)
 data Atom (n::Nat) = Atom{
-    atomPos :: [Float],
+    atomPos :: [Rl],
     atomOrbitals :: M.Map OrbitalLabel (Gaussians n),
     atomPotential :: Potential n,
     atomKineticTerm :: M.Map OrbitalLabel (Linear Cplx OrbitalLabel)
 }
 type Atoms (n::Nat) = M.Map AtomLabel (Atom n)
 
-emptyAtom :: forall n. KnownNat n => [Float] -> Atom n
+emptyAtom :: forall n. KnownNat n => [Rl] -> Atom n
 emptyAtom xs = addKinetic $ Atom
         xs
         (M.fromList $ liftA2 (\i (l,m,p) -> ((i,l,m),normalize @Cplx $ return $ centralGaussian (e i) p)) [-3..3] (concatMap (\l -> zipWith (l,,) [0..] $ P.sphericalHarmonicPolys l) [0,1]))
@@ -48,7 +48,7 @@ emptyAtom xs = addKinetic $ Atom
     where e :: Floating a => Int -> a
           e = (exp . (1.5*) . fromIntegral)
 
-evalAtomOrb :: Atom n -> OrbitalLabel -> [Float] -> Cplx
+evalAtomOrb :: Atom n -> OrbitalLabel -> [Rl] -> Cplx
 evalAtomOrb (Atom ax os _ _) ol xs = evaluates o xs'
     where o   = os M.! ol
           xs' = zipWith (-) xs ax

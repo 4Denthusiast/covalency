@@ -15,6 +15,7 @@ module Linear(
     towerScale,
     InnerProduct(..),
     normalize,
+    Rl,
     Cplx,
 ) where
 
@@ -64,7 +65,7 @@ class Semilinear n where
     conj :: n -> n
     conj = id
 
-instance Semilinear Float where
+instance Semilinear Rl where
 
 instance Num n => Semilinear (Complex n) where
     conj = conjugate
@@ -89,8 +90,8 @@ instance {-# OVERLAPS #-} (Vector a b, Num b) => Vector a (Linear b x) where
 towerScale :: forall a f b. (Num a, Vector f a, Vector a b) => f -> b -> b
 towerScale f b = (f *~ (1 :: a)) *~ b
 
-instance Semigroup Float where (<>)   = (+)
-instance Monoid    Float where {mappend = (<>); mempty = 0}
+instance Semigroup Rl where (<>)   = (+)
+instance Monoid    Rl where {mappend = (<>); mempty = 0}
 instance RealFloat a => Semigroup (Complex a) where (<>)   = (+)
 instance RealFloat a => Monoid    (Complex a) where {mappend = (<>); mempty = 0}
 
@@ -106,4 +107,5 @@ instance (InnerProduct f a, Num f, Ord f, Semilinear f, Monoid f) => InnerProduc
 normalize :: forall f a. (InnerProduct f a, Vector f a, Floating f) => a -> a
 normalize l = (1/sqrt (dot @f l l)) *~ l
 
-type Cplx = Complex Float
+type Rl = Double --"Real" is taken by a Prelude typeclass.
+type Cplx = Complex Rl

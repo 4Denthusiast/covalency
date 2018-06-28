@@ -30,20 +30,20 @@ import Data.Complex
 import Data.List
 import GHC.TypeLits --(natVal, Nat, KnownNat)
 
-data Gaussian (n::Nat) = Gaussian [Float] Float (Polynomial n Cplx) deriving (Eq, Show, Ord)
+data Gaussian (n::Nat) = Gaussian [Rl] Rl (Polynomial n Cplx) deriving (Eq, Show, Ord)
 type Gaussians (n::Nat) = Linear Cplx (Gaussian n)
 
-centralGaussian :: forall n . KnownNat n => Float -> (Polynomial n Cplx) -> Gaussian n
+centralGaussian :: forall n . KnownNat n => Rl -> (Polynomial n Cplx) -> Gaussian n
 centralGaussian = Gaussian (genericReplicate (natVal @n Proxy) 0)
 
-centralSphereGaussian :: KnownNat n => Float -> Cplx -> Gaussian n
+centralSphereGaussian :: KnownNat n => Rl -> Cplx -> Gaussian n
 centralSphereGaussian c a = centralGaussian c (P.constant a)
 
-evaluate :: Gaussian n -> [Float] -> Cplx
+evaluate :: Gaussian n -> [Rl] -> Cplx
 evaluate (Gaussian xs c a) ys = exp (-norm2 ys' / c) *~ P.evaluate' ys' a
     where ys' = zipWith' (-) ys xs
 
-evaluates :: Gaussians n -> [Float] -> Cplx
+evaluates :: Gaussians n -> [Rl] -> Cplx
 evaluates gs xs = flatten $ flip evaluate xs <$> gs
 
 integral :: forall n . KnownNat n => Gaussian n -> Cplx
@@ -57,7 +57,7 @@ convolve :: forall n . KnownNat n => Gaussian n -> Gaussian n -> Gaussian n
 convolve (Gaussian xs c a) (Gaussian xs' c' a') = Gaussian (zipWith' (+) xs xs') (c + c') (((sqrt (pi/(1/c+1/c'))) ^ natVal @n Proxy) *~ a'')
     where aShift :: Polynomial n (Polynomial n Cplx)
           aShift = P.evaluate (xpky (c/(c+c'))) a * P.evaluate (map negate $ xpky (-c'/(c+c'))) a'
-          xpky :: Float -> [Polynomial n (Polynomial n Cplx)]
+          xpky :: Rl -> [Polynomial n (Polynomial n Cplx)]
           xpky k = map (\i -> P.variable i + k *~ (P.constant (P.variable i))) [0..]
           a''    = P.monomialSum' (\es -> if any odd es then 0 else product $ map powerCoeff es) aShift
           powerCoeff 0 = 1
@@ -71,7 +71,7 @@ multiply (Gaussian xs c a) (Gaussian xs' c' a') = Gaussian ys d a''
           diff y x = real (y-x)
           a'' = P.constant (real m) * shiftPoly (zipWith diff ys xs) a * shiftPoly (zipWith diff ys xs') a'
 
-shiftGauss :: KnownNat n => [Float] -> Gaussian n -> Gaussian n
+shiftGauss :: KnownNat n => [Rl] -> Gaussian n -> Gaussian n
 shiftGauss dxs (Gaussian xs c a) = Gaussian (zipWith' (+) dxs xs) c a
 
 shiftPoly :: (Num a, Eq a, KnownNat n) => [a] -> Polynomial n a -> Polynomial n a
