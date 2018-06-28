@@ -23,8 +23,8 @@ module Gaussian(
 ) where
 
 import Linear
-import Polynomial (Polynomial)
-import qualified Polynomial as P
+import {-# SOURCE #-} Polynomial (Polynomial)
+import {-# SOURCE #-} qualified Polynomial as P
 
 import Data.Complex
 import Data.List

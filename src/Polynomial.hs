@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE KindSignatures      #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE FlexibleInstances   #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -14,9 +15,12 @@ module Polynomial(
     evaluate,
     evaluate',
     laplacian,
+    sphericalHarmonicPolys,
 ) where
 
 import Linear
+import Orbital
+import Eigen
 
 import Data.List
 import Data.Complex
@@ -25,7 +29,9 @@ import Data.Semigroup
 import GHC.TypeLits --(natVal, Nat, KnownNat)
 
 -- Polynomials in n variables.
-data Polynomial (n :: Nat) a = Polynomial [Monomial n a] deriving (Eq, Ord)
+data Polynomial (n :: Nat) a = Polynomial [Monomial n a]
+deriving instance Eq a => Eq (Polynomial n a)
+deriving instance Ord a => Ord (Polynomial n a)
 data Monomial   (n :: Nat) a = Monomial{
     monCoefficient :: a,
     monExponents   :: [Int]
@@ -84,6 +90,16 @@ evaluate' xs = monomialSum' (product . zipWith (^) xs)
 laplacian :: (KnownNat n, Eq a, Num a) => Polynomial n a -> Polynomial n a
 laplacian (Polynomial ms) = sum $ map monLap ms
     where monLap (Monomial a es) = Polynomial $ zipWith3 (\h t e -> Monomial (a*fromIntegral (e*(e-1))) (h++(e-2):t)) (inits es) (tail $ tails es) es
+
+sphericalHarmonicPolys :: forall n. KnownNat n => Int -> [Polynomial n Cplx]
+sphericalHarmonicPolys = map toPoly . fst . removeKernel . flip tabulate linearLaplacian . allMons (fromIntegral $ natVal @n Proxy)
+    where toPoly = flatten . fmap (Polynomial . (:[]) . Monomial 1)
+          allMons n l = filter ((==l) . sum) $ sequence $ replicate n [0..l]
+          linearLaplacian :: [Int] -> Linear Cplx [Int]
+          linearLaplacian m = mconcat $ zipWith (\h (e:t) -> if e < 2 then mempty else (e*(e-1))*~return (shift$h++(e-2):t)) (inits m) (init $ tails m)
+          shift (x:xs) = x+2 : xs
+
+instance InnerProduct Cplx [Int] where dot a b = if a == b then 1 else 0
 
 
 assumePolyReal :: (Eq a, Num a) => Polynomial n (Complex a) -> Polynomial n a

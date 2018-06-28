@@ -70,7 +70,7 @@ invert m0 = invert' m0 m0' xs0
               in if a == 0 then Nothing else invert' (k' <$> m) (k' <$> m') xs
 
 trim :: (Fractional f, Ord f) => Linear f a -> Linear f a
-trim (Linear xs) = Linear $ filter ((>threshold) . abs . fst) xs
+trim (Linear xs) = Linear $ xs --filter ((>threshold) . abs . fst) xs
     where threshold = (0.001*) $ maximum $ map (abs . fst) xs
 
 tabulate :: (Ord k) => [k] -> (k -> a) -> M.Map k a

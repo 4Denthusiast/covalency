@@ -74,9 +74,12 @@ handleEvent event w@(World inputState atoms orbs) = case inputState of
         (EventKey (MouseButton LeftButton) Down _ (x,y)) -> World inputState (M.insert s (emptyAtom [x/viewScale, y/viewScale, 0]) atoms) orbs
         (EventKey (Char 'f') Down _ _) -> World inputState atoms (testOrbs atoms)
         (EventKey (Char '=') Down _ _) -> World inputState atoms (drop 40 orbs)
-        (EventKey (Char '[') Down _ _) -> World inputState atoms (tail orbs ++ [head orbs])
+        (EventKey (Char '[') Down _ _) -> traceShow (head orbs) $ World inputState atoms (tail orbs ++ [head orbs])
         (EventKey (Char ']') Down _ _) -> World inputState atoms (last orbs : init orbs)
         _ -> w
 
 testOrbs :: KnownNat n => Atoms n -> [Orbital]
-testOrbs ats = negativeEigenvecsFrom (nuclearHamiltonian ats) (-9)
+testOrbs ats =
+    --map (return.("",)) $ M.keys $ atomOrbitals $ ats M.! ""
+    negativeEigenvecsFrom (nuclearHamiltonian ats) (-9)
+    --M.elems $ nuclearHamiltonian ats

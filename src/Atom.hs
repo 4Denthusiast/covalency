@@ -1,7 +1,9 @@
 {-# LANGUAGE DataKinds      #-}
 {-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module Atom(
     Atom(..),
     OrbitalLabel,
@@ -14,17 +16,21 @@ module Atom(
 ) where
 
 import Linear
+import {-# SOURCE #-} qualified Polynomial as P
 import Gaussian
 import Potential
 import {-# SOURCE #-} Orbital
 
 import Data.Complex
 import qualified Data.Map as M
+import Control.Applicative
 import GHC.TypeLits
 import Debug.Trace
 
 type AtomLabel = String
-type OrbitalLabel = Int
+type L = Int
+type M = Int
+type OrbitalLabel = (Int,L,M)
 data Atom (n::Nat) = Atom{
     atomPos :: [Float],
     atomOrbitals :: M.Map OrbitalLabel (Gaussians n),
@@ -33,10 +39,10 @@ data Atom (n::Nat) = Atom{
 }
 type Atoms (n::Nat) = M.Map AtomLabel (Atom n)
 
-emptyAtom :: KnownNat n => [Float] -> Atom n
+emptyAtom :: forall n. KnownNat n => [Float] -> Atom n
 emptyAtom xs = addKinetic $ Atom
         xs
-        (M.fromList $ map (\i -> (i,normalize @Cplx $ return $ centralGaussian (e i) 1)) [-4..4])
+        (M.fromList $ liftA2 (\i (l,m,p) -> ((i,l,m),normalize @Cplx $ return $ centralGaussian (e i) p)) [-3..3] (concatMap (\l -> zipWith (l,,) [0..] $ P.sphericalHarmonicPolys l) [0,1]))
         (((-2)*) . sphericalHarmonicPotential)
         undefined
     where e :: Floating a => Int -> a
