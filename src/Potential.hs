@@ -5,12 +5,13 @@
 {-# LANGUAGE DataKinds #-}
 module Potential(
     Potential,
-    sphericalHarmonicFunction,
-    sphericalHarmonicPotential,
+    coulumbFunction,
+    coulumbPotential,
 ) where
 
 import Linear
 import Gaussian
+import {-#SOURCE#-} Polynomial
 
 import Data.Complex
 import GHC.TypeLits
@@ -27,8 +28,8 @@ sizeRange (Linear gs') = (minimum $ map inner gs, maximum $ map outer gs)
 
 -- A linear combination of gaussians that approximates x^(2-n), the usual spherically-symmetric harmonic function, within the given range.
 -- TODO: add dimension-2 stuff. (that's complicated though)
-sphericalHarmonicFunction :: forall n. KnownNat n => (Rl, Rl) -> Gaussians n
-sphericalHarmonicFunction (l', h') = Linear (map ((1,).g) [0..k])
+coulumbFunction :: forall n. KnownNat n => (Rl, Rl) -> Gaussians n
+coulumbFunction (l', h') = Linear (map ((1,).g) [0..k])
     where d = 2 - natVal @n Proxy
           d' = div d 2
           l = l'*l' / 2
@@ -42,5 +43,13 @@ sphericalHarmonicFunction (l', h') = Linear (map ((1,).g) [0..k])
           fac (-0.5) = sqrt pi
           fac x = x * fac (x-1)
 
-sphericalHarmonicPotential :: KnownNat n => Potential n
-sphericalHarmonicPotential gs = dot gs (sphericalHarmonicFunction $ sizeRange gs)
+coulumbPotential :: KnownNat n => Potential n
+coulumbPotential gs = if central then flatten (centralCoulumb <$> gs) else dot gs (coulumbFunction $ sizeRange gs)
+    where (Linear gsl) = gs
+          central = False -- all ((\(Gaussian xs _ _) -> all (==0) xs) . snd) gsl
+          centralCoulumb (Gaussian _ c a) = monomialSum' (\m -> if any odd m then 0 else sphereIntegral m * radialIntegral c (sum m)) a
+          sphereIntegral m = 2* product (map (gammaHalf . (1+)) m) / gammaHalf (sum (map (1+) m))
+          gammaHalf 1 = sqrt pi
+          gammaHalf 2 = 1
+          gammaHalf n = gammaHalf (n-2) * fromIntegral (n-2) / 2
+          radialIntegral c n = (c ^ (1+div n 2))/2 * gammaHalf (n+2)

@@ -64,7 +64,7 @@ convolve (Gaussian xs c a) (Gaussian xs' c' a') = Gaussian (zipWith' (+) xs xs')
           powerCoeff n = c*c'/(c+c') / 2 * (fromIntegral n - 1) * powerCoeff (n-2)
 
 multiply :: KnownNat n => Gaussian n -> Gaussian n -> Gaussian n
-multiply (Gaussian xs c a) (Gaussian xs' c' a') = Gaussian ys d a''
+multiply (Gaussian xs c a) (Gaussian xs' c' a') = if xs == xs' then Gaussian xs d (a*a') else Gaussian ys d a''
     where d  = 1/(1/c + 1/c')
           ys = zipWith' (\x x' -> d * (x/c + x'/c')) xs xs'
           m  = exp (norm2 ys / d - norm2 xs / c - norm2 xs' / c')

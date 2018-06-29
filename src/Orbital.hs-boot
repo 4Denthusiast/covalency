@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Orbital(
     Matrix,
+    matTimes,
     invert,
     doInvert,
     tabulate,
@@ -20,6 +21,8 @@ import GHC.TypeLits
 type Matrix a = M.Map a (Linear Cplx a)
 
 overlaps :: (InnerProduct Cplx v, Ord a) => [(a,v)] -> Matrix a
+
+matTimes :: Ord a => Matrix a -> Linear Cplx a -> Linear Cplx a
 
 invert :: (Ord a) => Matrix a -> Maybe (Matrix a)
 

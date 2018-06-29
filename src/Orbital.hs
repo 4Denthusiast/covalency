@@ -6,6 +6,8 @@ module Orbital(
     Matrix,
     evalOrbital,
     nuclearHamiltonian,
+    hartreeFockIterants,
+    matTimes,
     invert,
     doInvert,
     tabulate,
@@ -17,6 +19,7 @@ import Linear
 import Gaussian
 import Potential
 import Atom
+import Eigen
 
 import qualified Data.Map as M
 import Data.Maybe
@@ -29,29 +32,55 @@ import Control.Applicative
 import GHC.TypeLits
 import Debug.Trace
 
-type Orbital = Linear Cplx (AtomLabel, OrbitalLabel)
+type Label = (AtomLabel, OrbitalLabel)
+type Orbital = Linear Cplx Label
 type Matrix a = M.Map a (Linear Cplx a)
 
 evalOrbital :: KnownNat n => Atoms n -> Orbital -> Gaussians n
 evalOrbital as o = reduce $ o >>= (\(al,ol) -> atomOrbitalsGlobal (as M.! al) M.! ol)
 
-nuclearHamiltonian :: KnownNat n => Atoms n -> Matrix (AtomLabel, OrbitalLabel)
+nuclearHamiltonian :: KnownNat n => Atoms n -> Matrix Label
 nuclearHamiltonian ats = M.unions $ map atomH (M.toList ats)
-    where --atomH :: (AtomLabel, Atom n) -> Matrix (AtomLabel, OrbitalLabel)
+    where --atomH :: (AtomLabel, Atom n) -> Matrix Label
           atomH (al, at) = M.mapKeysMonotonic (al,) $ M.mapWithKey (\ol o -> orbH ol o (atomKineticTerm at M.! ol) al) (atomOrbitalsGlobal at)
-          --orbH :: OrbitalLabel -> Gaussians n -> Linear Cplx OrbitalLabel -> AtomLabel -> Linear Cplx (AtomLabel, OrbitalLabel)
+          --orbH :: OrbitalLabel -> Gaussians n -> Linear Cplx OrbitalLabel -> AtomLabel -> Linear Cplx Label
           orbH ol o k al = reduce $ fmap (al,) k <> approximate (overlapsH o)
           overlapsH o = Linear $ flip map allOrbs (swap . second (totalPotential . liftA2 multiply o))
-          approximate :: Linear Cplx (AtomLabel, OrbitalLabel) -> Orbital
+          approximate :: Linear Cplx Label -> Orbital
           approximate o = trim $ reduce $ o >>= ((trim <$> doInvert (overlaps allOrbs)) M.!)
           allOrbs = concatMap (\(al,at) -> map (first (al,)) $ M.toList $ atomOrbitalsGlobal at) (M.toList ats)
           totalPotential o = sum $ map (flip atomPotentialGlobal o) (M.elems ats)
+
+-- this ! a ! b ! c = int(r) (r-r')^(2-d)|c⟩⟨a|δ(r)|b⟩
+fourElectronIntegrals :: KnownNat n => Atoms n -> M.Map Label (M.Map Label (Matrix Label))
+fourElectronIntegrals ats = strict $ flip M.mapWithKey allOrbs (\al a -> flip M.mapWithKey allOrbs (\bl b -> flip M.mapWithKey allOrbs (\cl c -> col a b c al bl cl)))
+    where col a b c al bl cl = traceCol al bl cl $ approximate $ mapToLinear $ flip fmap allOrbs (fei a b c)
+          fei a b c d = coulumbPotential (convolve <$> (multiply <$> a <*> b) <*> (multiply <$> c <*> d))
+          allOrbs = mconcat $ map (\(al,at) -> M.mapKeysMonotonic (al,) $ atomOrbitalsGlobal at) $ M.toList ats
+          approximate = trim . reduce . ((doInvert (overlaps (M.toList allOrbs)) M.!) =<<)
+          traceCol a b c x = seq (x == x) $ trace ("col" ++ show a ++ show b ++ show c) x
+          strict x = seq (x == x) x
+
+eeHamiltonian :: M.Map Label (M.Map Label (Matrix Label)) -> [Orbital] -> Matrix Label
+eeHamiltonian fei orbs = foldr addMat M.empty $ map orbField orbs
+    where orbField o = addMat ((2::Rl) *~ flatten' ((tei o M.!) <$> o)) ((-1::Rl) *~ (flip matTimes o <$> tei o))
+          tei o = fmap (flatten' . (<$> o) . (M.!)) fei
+          flatten' (Linear ms) = foldr addMat M.empty $ map (uncurry (*~)) ms --Can't just use flatten as Map has the wrong monoid instance.
+
+hartreeFockIterants :: KnownNat n => Atoms n -> Int -> [[Orbital]]
+hartreeFockIterants ats n = iterate (hartreeFockStep n (nuclearHamiltonian ats) (fourElectronIntegrals ats)) []
+
+hartreeFockStep :: Int -> Matrix Label -> M.Map Label (M.Map Label (Matrix Label)) -> [Orbital] -> [Orbital]
+hartreeFockStep n nh fei orbs = take n $ negativeEigenvecs $ addMat nh (traceShowMatId $ eeHamiltonian fei orbs)
 
 overlaps :: (InnerProduct Cplx v, Ord a) => [(a,v)] -> Matrix a
 overlaps xs = M.fromList $ flip map xs (second $ \x -> Linear (map (\(l,x') -> (dot x x',l)) xs))
 
 doInvert :: forall a. (Ord a) => Matrix a -> Matrix a
 doInvert = maybe (error "Singular matrix") id . invert
+
+matTimes :: Ord a => Matrix a -> Linear Cplx a -> Linear Cplx a
+matTimes m v = reduce $ (m M.!) =<< v
 
 invert :: forall a. (Ord a) => Matrix a -> Maybe (Matrix a)
 invert m0 = invert' m0 m0' xs0
@@ -75,6 +104,9 @@ trim (Linear xs) = Linear $ xs --filter ((>threshold) . abs . fst) xs
 
 tabulate :: (Ord k) => [k] -> (k -> a) -> M.Map k a
 tabulate ks f = M.fromList $ map (\k -> (k, f k)) ks
+
+addMat :: Ord a => Matrix a -> Matrix a -> Matrix a
+addMat = M.unionWith (\a b -> reduce (a <> b))
 
 swap (x,y) = (y,x)
 

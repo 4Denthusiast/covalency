@@ -42,8 +42,8 @@ type Atoms (n::Nat) = M.Map AtomLabel (Atom n)
 emptyAtom :: forall n. KnownNat n => [Rl] -> Atom n
 emptyAtom xs = addKinetic $ Atom
         xs
-        (M.fromList $ liftA2 (\i (l,m,p) -> ((i,l,m),normalize @Cplx $ return $ centralGaussian (e i) p)) [-3..3] (concatMap (\l -> zipWith (l,,) [0..] $ P.sphericalHarmonicPolys l) [0,1]))
-        (((-2)*) . sphericalHarmonicPotential)
+        (M.fromList $ liftA2 (\i (l,m,p) -> ((i,l,m),normalize @Cplx $ return $ centralGaussian (e i) p)) [-3..2] (concatMap (\l -> zipWith (l,,) [0..] $ P.sphericalHarmonicPolys l) [0,1]))
+        ((1*) . negate . coulumbPotential)
         undefined
     where e :: Floating a => Int -> a
           e = (exp . (1.5*) . fromIntegral)

@@ -84,6 +84,7 @@ handleEvent event w@(World inputState atoms orbs) = case inputState of
 
 testOrbs :: KnownNat n => Atoms n -> [Orbital]
 testOrbs ats =
+    --hartreeFockIterants ats 2 !! 12
     --map (return.("",)) $ M.keys $ atomOrbitals $ ats M.! ""
-    negativeEigenvecsFrom (nuclearHamiltonian ats) (-9)
+    negativeEigenvecs (nuclearHamiltonian ats)
     --M.elems $ nuclearHamiltonian ats

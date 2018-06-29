@@ -5,21 +5,25 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TupleSections #-}
 module Linear(
     Linear(..),
     reduce,
     scale,
     flatten,
+    flatten',
     Semilinear(..),
     Vector(..),
     towerScale,
     InnerProduct(..),
     normalize,
+    mapToLinear,
     Rl,
     Cplx,
 ) where
 
 import Data.List
+import qualified Data.Map as M
 import Data.Monoid hiding ((<>))
 import Data.Semigroup
 import Control.Applicative
@@ -58,8 +62,10 @@ reduce (Linear xs) = Linear $ foldr merge [] $ sortOn snd $ xs
 scale :: Num f => f -> Linear f a -> Linear f a
 scale a (Linear xs) = Linear $ map (\(n,x) -> (a*n, x)) xs
 
-flatten :: forall f a. (Vector f a, Monoid a) => Linear f a -> a
-flatten (Linear xs) = mconcat $ map (uncurry (*~)) xs
+flatten  :: forall f a. (Vector f a, Monoid a) => Linear f a -> a
+flatten  (Linear xs) = mconcat $ map (uncurry (*~)) xs
+flatten' :: forall f a. (Vector a f, Num f) => Linear f a -> f
+flatten' (Linear xs) = sum $ map (uncurry $ flip (*~)) xs
 
 class Semilinear n where
     conj :: n -> n
@@ -86,6 +92,7 @@ instance Floating f => Vector f (Complex f) where a *~ b = (a *) <$> b
 instance Vector Int Cplx where n *~ x = fromIntegral n * x
 instance {-# OVERLAPS #-} (Vector a b, Num b) => Vector a (Linear b x) where
     (*~) = towerScale @b
+instance Vector f a => Vector f (M.Map k a) where (*~) = fmap . (*~)
 
 towerScale :: forall a f b. (Num a, Vector f a, Vector a b) => f -> b -> b
 towerScale f b = (f *~ (1 :: a)) *~ b
@@ -106,6 +113,9 @@ instance (InnerProduct f a, Num f, Ord f, Semilinear f, Monoid f) => InnerProduc
 
 normalize :: forall f a. (InnerProduct f a, Vector f a, Floating f) => a -> a
 normalize l = (1/sqrt (dot @f l l)) *~ l
+
+mapToLinear :: M.Map a f -> Linear f a
+mapToLinear = Linear . map (uncurry $ flip (,)) . M.toList
 
 type Rl = Double --"Real" is taken by a Prelude typeclass.
 type Cplx = Complex Rl
