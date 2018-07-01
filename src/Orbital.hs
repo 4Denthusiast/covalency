@@ -44,10 +44,10 @@ evalOrbital as o = reduce $ o >>= (\(al,ol) -> atomOrbitalsGlobal (as M.! al) M.
 nuclearHamiltonian :: KnownNat n => Atoms n -> Matrix Label
 nuclearHamiltonian ats = M.unions $ map atomH (M.toList ats)
     where --atomH :: (AtomLabel, Atom n) -> Matrix Label
-          atomH (al, at) = M.mapKeysMonotonic (al,) $ M.mapWithKey (\ol o -> orbH ol o (atomKineticTerm at M.! ol) al) (atomOrbitalsGlobal at)
-          --orbH :: OrbitalLabel -> Gaussians n -> Linear Cplx OrbitalLabel -> AtomLabel -> Linear Cplx Label
-          orbH ol o k al = reduce $ fmap (al,) k <> approximate (overlapsH o)
-          overlapsH o = Linear $ flip map allOrbs (swap . second (totalPotential . liftA2 multiply o))
+          atomH (al, at) = M.mapKeysMonotonic (al,) $ M.mapWithKey (\ol o -> orbH ol o al) (atomOrbitalsGlobal at)
+          orbH ol o al = reduce $ approximate (overlapsH o)
+          overlapsH o = Linear $ flip map allOrbs (swap . second (singleH o))
+          singleH o o' = totalPotential (liftA2 multiply o o') - 0.5*flatten (liftA2 (dot . laplacian) o o')
           approximate :: Linear Cplx Label -> Orbital
           approximate o = trim $ reduce $ o >>= ((trim <$> doInvert (overlaps allOrbs)) M.!)
           allOrbs = concatMap (\(al,at) -> map (first (al,)) $ M.toList $ atomOrbitalsGlobal at) (M.toList ats)
