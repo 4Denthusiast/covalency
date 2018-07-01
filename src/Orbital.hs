@@ -4,9 +4,13 @@
 module Orbital(
     Orbital(..),
     Matrix,
+    Label,
+    Integrals,
     evalOrbital,
+    calculateIntegrals,
     nuclearHamiltonian,
     hartreeFockIterants,
+    hartreeFockStep,
     matTimes,
     invert,
     doInvert,
@@ -55,9 +59,9 @@ nuclearHamiltonian ats = M.unions $ map atomH (M.toList ats)
 
 -- this ! a ! b ! c = int(r) (r-r')^(2-d)|c⟩⟨a|δ(r)|b⟩
 fourElectronIntegrals :: KnownNat n => Atoms n -> M.Map Label (M.Map Label (Matrix Label))
-fourElectronIntegrals ats = strict $ flip M.mapWithKey allOrbs (\al a -> flip M.mapWithKey allOrbs (\bl b -> flip M.mapWithKey allOrbs (\cl c -> col a b c al bl cl)))
-    where col a b c al bl cl = traceCol al bl cl $ approximate $ mapToLinear $ flip fmap allOrbs (fei a b c)
-          fei a b c d = coulumbPotential (convolve <$> (multiply <$> a <*> b) <*> (multiply <$> c <*> d))
+fourElectronIntegrals ats = strict $ flip M.mapWithKey allOrbs (\al a -> flip M.mapWithKey allOrbs (\bl b -> flip M.mapWithKey allOrbs (\cl c -> col (multiply <$> a <*> b) c al bl cl)))
+    where col ab c al bl cl = traceCol al bl cl $ approximate $ mapToLinear $ flip fmap allOrbs (fei ab c)
+          fei ab c d = coulumbPotential (convolve <$> ab <*> (multiply <$> c <*> d))
           allOrbs = mconcat $ map (\(al,at) -> M.mapKeysMonotonic (al,) $ atomOrbitalsGlobal at) $ M.toList ats
           approximate = trim . reduce . ((doInvert (overlaps (M.toList allOrbs)) M.!) =<<)
           traceCol a b c x = seq (x == x) $ trace ("col" ++ show a ++ show b ++ show c) x
@@ -70,12 +74,12 @@ eeHamiltonian fei orbs = foldr addMat M.empty $ map orbField orbs
           flatten' (Linear ms) = foldr addMat M.empty $ map (uncurry (*~)) ms --Can't just use flatten as Map has the wrong monoid instance.
 
 hartreeFockIterants :: KnownNat n => Atoms n -> Int -> [[Orbital]]
-hartreeFockIterants ats n = map snd $ iterate (hartreeFockStep n (calculateIntegrals ats)) (M.empty,[])
+hartreeFockIterants ats n = map snd $ iterate (hartreeFockStep 0.5 n (calculateIntegrals ats)) (M.empty,[])
 
-hartreeFockStep :: Int -> Integrals -> (Matrix Label,[Orbital]) -> (Matrix Label,[Orbital])
-hartreeFockStep n (overlaps,nh,fei) (peeh,orbs) = (eeh, take n $ negativeEigenvecs $ addMat nh eeh)
+hartreeFockStep :: Rl -> Int -> Integrals -> (Matrix Label,[Orbital]) -> (Matrix Label,[Orbital])
+hartreeFockStep s n (overlaps,nh,fei) (peeh,orbs) = (eeh, take n $ negativeEigenvecs $ addMat nh eeh)
     where orbs' = map (\o -> (1/sqrt (dot o (matTimes overlaps o))::Cplx) *~ o) orbs
-          eeh = (0.5::Cplx) *~ (addMat peeh $ eeHamiltonian fei orbs')
+          eeh = addMat ((1-s) *~ peeh) $ (s *~ eeHamiltonian fei orbs')
 
 overlaps :: (InnerProduct Cplx v, Ord a) => [(a,v)] -> Matrix a
 overlaps xs = M.fromList $ flip map xs (second $ \x -> Linear (map (\(l,x') -> (dot x x',l)) xs))
