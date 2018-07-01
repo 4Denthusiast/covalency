@@ -3,6 +3,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections #-}
 module Eigen(
     inverseIterants,
     rayleighIterate,
@@ -67,7 +68,7 @@ slowRayleighIterate :: (InnerProduct Cplx a, Ord a) => Matrix a -> Cplx -> Linea
 slowRayleighIterate m μ v = case offsetInverse m μ of
     Nothing -> v
     Just m' -> let v' = normalize @Cplx $ matTimes m' v in
-        if min 0.001 (eigenvectorQuality m v') > eigenvectorQuality m v then v else slowRayleighIterate m (0.7*μ+0.3*rayleighQuotient m v) v'
+        if min 1e-12 (eigenvectorQuality m v') > eigenvectorQuality m v then v else slowRayleighIterate m (0.7*μ+0.3*rayleighQuotient m v) v'
 
 eigenvecNear :: (InnerProduct Cplx a, Ord a) => Matrix a -> Cplx -> Linear Cplx a
 eigenvecNear m μ0 = slowRayleighIterate m μ0 $ fromJust $ find ((<0.1).eigenvectorQuality m) $ drop 20 $ inverseIterants m μ0 $ arbitrary m
@@ -78,18 +79,20 @@ negativeEigenvecs m = negativeEigenvecsFrom m b
 
 -- Sometimes misses eigenvectors due to (presumably) numerical instability.
 negativeEigenvecsFrom :: (InnerProduct Cplx a, Ord a) => Matrix a -> Cplx -> [Linear Cplx a]
-negativeEigenvecsFrom m b = map (rayleighIterate m) $ concatMap (fst . removeKernel . offsetMat m) $ takeWhile (<0) $ eigenvalsFrom m b
+negativeEigenvecsFrom m b = map traceQuality $ concatMap (fst . removeKernel . offsetMat m) $ takeWhile (<0) $ eigenvalsFrom m b
+    where traceQuality v = trace ("quality: " ++ show (eigenvectorQuality m v)) v
 
 eigenvalsFrom :: (InnerProduct Cplx a, Ord a) => Matrix a -> Cplx -> [Cplx]
-eigenvalsFrom m b = if M.null m then [] else b' : eigenvalsFrom (removeEigenval b' m) b'
-    where b' = traceShowId $ rayleighQuotient m $ eigenvecNear m b
+eigenvalsFrom m b = if M.null m then [] else seq m' b' : eigenvalsFrom m' b'
+    where b' = rayleighQuotient m $ eigenvecNear m b
+          m' = removeEigenval b' m
 
 converged f (x:x':xs) = if f x' >= f x then x else converged f (x':xs)
 converged f [x] = x
 
 -- (removeEigenval μ m) is a matrix similar to the restriction of m to a subspace complementary to the μ-eigenspace.
 removeEigenval :: (InnerProduct Cplx a, Ord a) => Cplx -> Matrix a -> Matrix a
-removeEigenval μ m = flip offsetMat (-μ) $ snd $ removeKernel $ offsetMat m μ
+removeEigenval μ m = flip offsetMat (-μ) $ uncurry (traceShow . (μ,) . (length)) $ removeKernel $ offsetMat m μ
 
 removeKernel :: forall a. (InnerProduct Cplx a, Ord a) => Matrix a -> ([Linear Cplx a], Matrix a)
 removeKernel m0 = removeKernel' m0 (idMat xs0) xs0 []
@@ -112,7 +115,7 @@ removeKernel m0 = removeKernel' m0 (idMat xs0) xs0 []
                   succeed = removeKernel' ((reduce . ((k.f) =<<)) <$> m) (matTimes m' <$> fmap (f <$>) k') xs ker
                   fail = removeKernel' m m' xs (x:ker)
               in
-                  if magnitude a > 0.001* magnitude a' then succeed else fail
+                  if magnitude a > 1e-6* magnitude a' then succeed else fail
           removeKernel' m m' [] ker = (
                   map checkKer $ map (\x -> normalize @Cplx $ reduce $ (without ker =<< m M.! x) <> (-1::Cplx) *~ return x) ker,
                   (without ker =<<) <$> matTimes m <$> M.withoutKeys m' (S.fromList ker)

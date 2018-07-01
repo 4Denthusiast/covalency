@@ -35,6 +35,8 @@ import Debug.Trace
 type Label = (AtomLabel, OrbitalLabel)
 type Orbital = Linear Cplx Label
 type Matrix a = M.Map a (Linear Cplx a)
+-- Integrals = (overlaps, nuclear hamiltonian, four-electron integrals)
+type Integrals = (Matrix Label, Matrix Label, M.Map Label (M.Map Label (Matrix Label)))
 
 evalOrbital :: KnownNat n => Atoms n -> Orbital -> Gaussians n
 evalOrbital as o = reduce $ o >>= (\(al,ol) -> atomOrbitalsGlobal (as M.! al) M.! ol)
@@ -68,13 +70,21 @@ eeHamiltonian fei orbs = foldr addMat M.empty $ map orbField orbs
           flatten' (Linear ms) = foldr addMat M.empty $ map (uncurry (*~)) ms --Can't just use flatten as Map has the wrong monoid instance.
 
 hartreeFockIterants :: KnownNat n => Atoms n -> Int -> [[Orbital]]
-hartreeFockIterants ats n = iterate (hartreeFockStep n (nuclearHamiltonian ats) (fourElectronIntegrals ats)) []
+hartreeFockIterants ats n = map snd $ iterate (hartreeFockStep n (calculateIntegrals ats)) (M.empty,[])
 
-hartreeFockStep :: Int -> Matrix Label -> M.Map Label (M.Map Label (Matrix Label)) -> [Orbital] -> [Orbital]
-hartreeFockStep n nh fei orbs = take n $ negativeEigenvecs $ addMat nh (traceShowMatId $ eeHamiltonian fei orbs)
+hartreeFockStep :: Int -> Integrals -> (Matrix Label,[Orbital]) -> (Matrix Label,[Orbital])
+hartreeFockStep n (overlaps,nh,fei) (peeh,orbs) = (eeh, take n $ negativeEigenvecs $ addMat nh eeh)
+    where orbs' = map (\o -> (1/sqrt (dot o (matTimes overlaps o))::Cplx) *~ o) orbs
+          eeh = (0.5::Cplx) *~ (addMat peeh $ eeHamiltonian fei orbs')
 
 overlaps :: (InnerProduct Cplx v, Ord a) => [(a,v)] -> Matrix a
 overlaps xs = M.fromList $ flip map xs (second $ \x -> Linear (map (\(l,x') -> (dot x x',l)) xs))
+
+orbitalOverlaps :: KnownNat n => Atoms n -> Matrix Label
+orbitalOverlaps = overlaps . concatMap (\(al,at) -> map (first (al,)) $ M.toList $ atomOrbitalsGlobal at) . M.toList
+
+calculateIntegrals :: KnownNat n => Atoms n -> Integrals
+calculateIntegrals ats = (orbitalOverlaps ats, nuclearHamiltonian ats, fourElectronIntegrals ats)
 
 doInvert :: forall a. (Ord a) => Matrix a -> Matrix a
 doInvert = maybe (error "Singular matrix") id . invert
