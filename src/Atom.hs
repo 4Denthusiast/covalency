@@ -9,8 +9,8 @@ module Atom(
     OrbitalLabel,
     AtomLabel,
     Atoms,
-    emptyAtom,
-    evalAtomOrb,
+    newAtom,
+    changeZ,
     atomOrbitalsGlobal,
     atomPotentialGlobal,
 ) where
@@ -33,23 +33,25 @@ type M = Int
 type OrbitalLabel = (Int,L,M)
 data Atom (n::Nat) = Atom{
     atomPos :: [Rl],
+    atomicNumber :: Int,
     atomOrbitals :: M.Map OrbitalLabel (Gaussians n),
     atomPotential :: Potential n
 }
 type Atoms (n::Nat) = M.Map AtomLabel (Atom n)
 
-emptyAtom :: forall n. KnownNat n => [Rl] -> Atom n
-emptyAtom xs = Atom
-        xs
-        (M.fromList $ liftA2 (\i (l,m,p) -> ((i,l,m),normalize @Cplx $ return $ centralGaussian (e i) p)) [-3..2] (concatMap (\l -> zipWith (l,,) [0..] $ P.sphericalHarmonicPolys l) [0,1]))
-        ((2*) . negate . coulumbPotential)
+newAtom :: forall n. KnownNat n => Int -> [Rl] -> Atom n
+newAtom z xs = changeZ z $ Atom {
+        atomPos = xs,
+        atomOrbitals = (M.fromList $ liftA2 (\i (l,m,p) -> ((i,l,m),normalize @Cplx $ return $ centralGaussian (e i) p)) [-3..2] (concatMap (\l -> zipWith (l,,) [0..] $ P.sphericalHarmonicPolys l) [0,1]))
+    }
     where e :: Floating a => Int -> a
           e = (exp . (1.5*) . fromIntegral)
 
-evalAtomOrb :: Atom n -> OrbitalLabel -> [Rl] -> Cplx
-evalAtomOrb (Atom ax os _) ol xs = evaluates o xs'
-    where o   = os M.! ol
-          xs' = zipWith (-) xs ax
+changeZ :: KnownNat n => Int -> Atom n -> Atom n
+changeZ z at = at{
+        atomicNumber = z,
+        atomPotential = ((fromIntegral z*) . negate . coulumbPotential)
+    }
 
 atomOrbitalsGlobal :: KnownNat n => Atom n -> M.Map OrbitalLabel (Gaussians n)
 atomOrbitalsGlobal at = (shiftGauss (atomPos at) <$>) <$> (atomOrbitals at)

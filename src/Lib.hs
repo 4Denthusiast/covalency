@@ -60,6 +60,7 @@ renderWorld :: World -> Picture
 renderWorld w = pictures $
     orbitalPicture w :
     renderInput (inputState w) :
+    renderAtomicNumber (inputState w) (worldAtoms w) :
     renderScales (worldViewScale w) :
     map (uncurry (renderAtom (worldViewScale w))) (M.toList (worldAtoms w))
 
@@ -67,8 +68,14 @@ renderAtom :: Float -> AtomLabel -> Atom n -> Picture
 renderAtom viewScale label at = let (x:y:_) = atomPos at in Color white $ Translate (num x*viewScale) (num y*viewScale) $ Pictures [Scale 0.1 0.1 $ Text label, Circle 20]
 
 renderInput :: InputState -> Picture
-renderInput (Typing  s) = Color red   $ Translate (-390) (-390) $ Scale 0.2 0.2 $ Text ('>':s)
-renderInput (Editing s) = Color white $ Translate (-390) (-390) $ Scale 0.2 0.2 $ Text ('#':s)
+renderInput (Typing  s) = Color red   $ Translate (-300) (-390) $ Scale 0.2 0.2 $ Text ('>':s)
+renderInput (Editing s) = Color white $ Translate (-300) (-390) $ Scale 0.2 0.2 $ Text ('#':s)
+
+renderAtomicNumber :: InputState -> M.Map AtomLabel (Atom n) -> Picture
+renderAtomicNumber i ats = Color white $ Translate (-390) (-390) $ Scale 0.2 0.2 $ Text ("Z="++z)
+    where s = case i of {(Typing s) -> s; (Editing s) -> s}
+          at = M.lookup s ats
+          z = maybe "" (show . atomicNumber) at
 
 renderScales :: Float -> Picture
 renderScales vs = Color white $ Pictures [bar, t]
@@ -101,6 +108,8 @@ handleEvent event w = case inputState w of
         (EventKey (Char '[') Down _ _) -> traceShow (take 1 $ fst orbs) $ rr w{worldOrbitals = shiftRight orbs}
         (EventKey (Char ']') Down _ _) -> rr w{worldOrbitals = shiftLeft orbs}
         (EventKey (SpecialKey KeyDelete) Down _ _) -> rr w{worldOrbitals = ([],[]), worldAtoms = M.delete s atoms}
+        (EventKey (Char '+') Down _ _) -> w{worldAtoms = M.adjust (\a -> changeZ (atomicNumber a + 1) a) s atoms}
+        (EventKey (Char '-') Down _ _) -> w{worldAtoms = M.adjust (\a -> changeZ (max 1 $ atomicNumber a - 1) a) s atoms}
         _ -> both s
     where atoms = worldAtoms w
           orbs  = worldOrbitals w
@@ -109,8 +118,9 @@ handleEvent event w = case inputState w of
           ints  = worldIntegrals w
           rr    = reRender
           d     = 3 --TODO explicitly link this to the dimension of the atoms.
+          pos (x,y) = [num $ x/viewScale, num $ y/viewScale, 0]
           both s = case event of
-              (EventKey (MouseButton LeftButton) Down _ (x,y)) -> rr w{worldAtoms = M.insert s (emptyAtom [num $ x/viewScale, num $ y/viewScale, 0]) atoms}
+              (EventKey (MouseButton LeftButton) Down _ p) -> rr w{worldAtoms = M.alter (Just . maybe (newAtom 1 (pos p)) (\a -> a{atomPos = pos p})) s atoms}
               (EventKey (MouseButton WheelDown) Down _ _) -> rr w{worldViewScale = viewScale / 2, worldValScale = valScale * (2 ** (d/2))}
               (EventKey (MouseButton WheelUp  ) Down _ _) -> rr w{worldViewScale = viewScale * 2, worldValScale = valScale / (2 ** (d/2))} 
               _ -> w
@@ -130,4 +140,5 @@ hydrogenLikeOrbs (_,h,_) = negativeEigenvecs h
 
 hfStepWorld :: Rl -> World -> World
 hfStepWorld s w = w{worldOrbitals = (orbs',[]), worldPrevEEHamiltonian = peeh'}
-    where (peeh', orbs') = hartreeFockStep s 5 (worldIntegrals w) (worldPrevEEHamiltonian w, (\(o,o') -> reverse o' ++ o) $ worldOrbitals w)
+    where (peeh', orbs') = hartreeFockStep s (div n 2) (worldIntegrals w) (worldPrevEEHamiltonian w, (\(o,o') -> reverse o' ++ o) $ worldOrbitals w)
+          n = sum $ atomicNumber <$> worldAtoms w
