@@ -26,6 +26,7 @@ import Atom
 import Eigen
 
 import qualified Data.Map as M
+import Data.Map (Map)
 import Data.Maybe
 import Data.List
 import Data.Function
@@ -38,9 +39,9 @@ import Debug.Trace
 
 type Label = (AtomLabel, OrbitalLabel)
 type Orbital = Linear Cplx Label
-type Matrix a = M.Map a (Linear Cplx a)
+type Matrix a = Map a (Linear Cplx a)
 -- Integrals = (overlaps, nuclear hamiltonian, four-electron integrals)
-type Integrals = (Matrix Label, Matrix Label, M.Map Label (M.Map Label (Matrix Label)))
+type Integrals = (Matrix Label, Matrix Label, Map Label (Map Label (Matrix Label)))
 
 evalOrbital :: KnownNat n => Atoms n -> Orbital -> Gaussians n
 evalOrbital as o = reduce $ o >>= (\(al,ol) -> atomOrbitalsGlobal (as M.! al) M.! ol)
@@ -58,16 +59,22 @@ nuclearHamiltonian ats = M.unions $ map atomH (M.toList ats)
           totalPotential o = sum $ map (flip atomPotentialGlobal o) (M.elems ats)
 
 -- this ! a ! b ! c = int(r) (r-r')^(2-d)|c⟩⟨a|δ(r)|b⟩
-fourElectronIntegrals :: KnownNat n => Atoms n -> M.Map Label (M.Map Label (Matrix Label))
-fourElectronIntegrals ats = strict $ flip M.mapWithKey allOrbs (\al a -> flip M.mapWithKey allOrbs (\bl b -> flip M.mapWithKey allOrbs (\cl c -> col (multiply <$> a <*> b) c al bl cl)))
-    where col ab c al bl cl = traceCol al bl cl $ approximate $ mapToLinear $ flip fmap allOrbs (fei ab c)
-          fei ab c d = coulumbPotential (convolve <$> ab <*> (multiply <$> c <*> d))
+fourElectronIntegrals :: KnownNat n => Atoms n -> Map Label (Map Label (Matrix Label))
+fourElectronIntegrals ats = strict $ tabulate allLabels (\a -> tabulate allLabels (\b -> tabulate allLabels (col a b)))
+    where col :: Label -> Label -> Label -> Linear Cplx Label
+          col a b c = traceCol a b c $ approximate $ mapToLinear $ tabulate allLabels (getFei a b c)
+          getFei a b c d = let (a',b',c',d') = semisort (a,b,c,d) in cache M.! a' M.! b' M.! c' M.! d'
+          semisort = (\(a,b,c,d) -> if a > c then (c,d,a,b) else (a,b,c,d)) . (\(a,b,c,d) -> (min a b, max a b, min c d, max c d))
+          -- Just compute the whole thing then lazily copy some bits over others, thus reducing the amount of actual integrals performed.
+          cache = flip fmap allOrbs (\a -> flip fmap allOrbs (\b -> flip fmap allOrbs (\c -> flip fmap allOrbs (fei a b c))))
+          fei a b c d = coulumbPotential (convolve . reverseGauss <$> (multiply <$> a <*> b) <*> (multiply <$> c <*> d))
+          allLabels = M.keys allOrbs
           allOrbs = mconcat $ map (\(al,at) -> M.mapKeysMonotonic (al,) $ atomOrbitalsGlobal at) $ M.toList ats
           approximate = trim . reduce . ((doInvert (overlaps (M.toList allOrbs)) M.!) =<<)
           traceCol a b c x = seq (x == x) $ trace ("col" ++ show a ++ show b ++ show c) x
           strict x = seq (x == x) x
 
-eeHamiltonian :: M.Map Label (M.Map Label (Matrix Label)) -> [Orbital] -> Matrix Label
+eeHamiltonian :: Map Label (Map Label (Matrix Label)) -> [Orbital] -> Matrix Label
 eeHamiltonian fei orbs = foldr addMat M.empty $ map orbField orbs
     where orbField o = addMat ((2::Rl) *~ flatten' ((tei o M.!) <$> o)) ((-1::Rl) *~ (flip matTimes o <$> tei o))
           tei o = fmap (flatten' . (<$> o) . (M.!)) fei
@@ -116,8 +123,11 @@ trim :: (Fractional f, Ord f) => Linear f a -> Linear f a
 trim (Linear xs) = Linear $ xs --filter ((>threshold) . abs . fst) xs
     where threshold = (0.001*) $ maximum $ map (abs . fst) xs
 
-tabulate :: (Ord k) => [k] -> (k -> a) -> M.Map k a
+tabulate :: (Ord k) => [k] -> (k -> a) -> Map k a
 tabulate ks f = M.fromList $ map (\k -> (k, f k)) ks
+
+mapTranspose :: (Ord k, Ord k') => Map k (Map k' a) -> Map k' (Map k a)
+mapTranspose = M.foldl (M.unionWith M.union) M.empty . M.mapWithKey (\k m' -> M.singleton k <$> m')
 
 addMat :: Ord a => Matrix a -> Matrix a -> Matrix a
 addMat = M.unionWith (\a b -> reduce (a <> b))

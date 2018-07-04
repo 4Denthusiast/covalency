@@ -75,7 +75,7 @@ eigenvecNear m μ0 = slowRayleighIterate m μ0 $ fromJust $ find ((<0.1).eigenve
 
 negativeEigenvecs :: (InnerProduct Cplx a, Ord a) => Matrix a -> [Linear Cplx a]
 negativeEigenvecs m = negativeEigenvecsFrom m b
-    where b = converged id $ iterate (eigenvalNear m . (\a -> minimum [a-1,a*4,-a])) 0
+    where b = converged id $ iterate (eigenvalNear m . (\a -> minimum [a-1,a*18,-a])) 0
 
 -- Sometimes misses eigenvectors due to (presumably) numerical instability.
 negativeEigenvecsFrom :: (InnerProduct Cplx a, Ord a) => Matrix a -> Cplx -> [Linear Cplx a]

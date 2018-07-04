@@ -16,6 +16,7 @@ module Gaussian(
     convolve,
     multiply,
     shiftGauss,
+    reverseGauss,
     scaleGauss,
     laplacian,
     norm2,
@@ -73,6 +74,9 @@ multiply (Gaussian xs c a) (Gaussian xs' c' a') = if xs == xs' then Gaussian xs 
 
 shiftGauss :: KnownNat n => [Rl] -> Gaussian n -> Gaussian n
 shiftGauss dxs (Gaussian xs c a) = Gaussian (zipWith' (+) dxs xs) c a
+
+reverseGauss :: KnownNat n => Gaussian n -> Gaussian n
+reverseGauss (Gaussian xs c a) = Gaussian (map negate xs) c (P.evaluate (map (negate . P.variable) [0..]) a)
 
 shiftPoly :: (Num a, Eq a, KnownNat n) => [a] -> Polynomial n a -> Polynomial n a
 shiftPoly as p = P.evaluate (zipWith (\a i -> P.variable i + P.constant a) as [0..]) p
