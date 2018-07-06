@@ -38,12 +38,12 @@ import GHC.TypeLits
 import Debug.Trace
 
 type Label = (AtomLabel, OrbitalLabel)
-type Orbital = Linear Cplx Label
+type Orbital = (Maybe Spin, Linear Cplx Label)
 type Matrix a = Map a (Linear Cplx a)
 -- Integrals = (overlaps, nuclear hamiltonian, four-electron integrals)
 type Integrals = (Matrix Label, Matrix Label, Map Label (Map Label (Matrix Label)))
 
-evalOrbital :: KnownNat n => Atoms n -> Orbital -> Gaussians n
+evalOrbital :: KnownNat n => Atoms n -> Linear Cplx Label -> Gaussians n
 evalOrbital as o = reduce $ o >>= (\(al,ol) -> atomOrbitalsGlobal (as M.! al) M.! ol)
 
 nuclearHamiltonian :: KnownNat n => Atoms n -> Matrix Label
@@ -53,7 +53,6 @@ nuclearHamiltonian ats = M.unions $ map atomH (M.toList ats)
           orbH ol o al = reduce $ approximate (overlapsH o)
           overlapsH o = Linear $ flip map allOrbs (swap . second (singleH o))
           singleH o o' = totalPotential (liftA2 multiply o o') - 0.5*flatten (liftA2 (dot . laplacian) o o')
-          approximate :: Linear Cplx Label -> Orbital
           approximate o = trim $ reduce $ o >>= ((trim <$> doInvert (overlaps allOrbs)) M.!)
           allOrbs = concatMap (\(al,at) -> map (first (al,)) $ M.toList $ atomOrbitalsGlobal at) (M.toList ats)
           totalPotential o = sum $ map (flip atomPotentialGlobal o) (M.elems ats)
@@ -74,19 +73,29 @@ fourElectronIntegrals ats = strict $ tabulate allLabels (\a -> tabulate allLabel
           traceCol a b c x = seq (x == x) $ trace ("col" ++ show a ++ show b ++ show c) x
           strict x = seq (x == x) x
 
-eeHamiltonian :: Map Label (Map Label (Matrix Label)) -> [Orbital] -> Matrix Label
-eeHamiltonian fei orbs = foldr addMat M.empty $ map orbField orbs
-    where orbField o = addMat ((2::Rl) *~ flatten' ((tei o M.!) <$> o)) ((-1::Rl) *~ (flip matTimes o <$> tei o))
+-- Produces [up electron hamiltonian, down electron hamiltonian]
+eeHamiltonian :: Map Label (Map Label (Matrix Label)) -> [Orbital] -> [Matrix Label]
+eeHamiltonian fei orbs = foldr (zipWith addMat) [M.empty,M.empty] $ map orbField orbs
+    where orbField (s,o) = case s of
+              Just Up   -> [addMat (coulumb o) (exchange o), coulumb o]
+              Just Down -> [coulumb o, addMat (coulumb o) (exchange o)]
+              Nothing   -> replicate 2 $ addMat ((2::Rl) *~ coulumb o) (exchange o)
+          coulumb o = flatten' ((tei o M.!) <$> o)
+          exchange o = ((-1::Rl) *~ (flip matTimes o <$> tei o))
           tei o = fmap (flatten' . (<$> o) . (M.!)) fei
           flatten' (Linear ms) = foldr addMat M.empty $ map (uncurry (*~)) ms --Can't just use flatten as Map has the wrong monoid instance.
 
 hartreeFockIterants :: KnownNat n => Atoms n -> Int -> [[Orbital]]
-hartreeFockIterants ats n = map snd $ iterate (hartreeFockStep 0.5 n (calculateIntegrals ats)) (M.empty,[])
+hartreeFockIterants ats n = map snd $ iterate (hartreeFockStep 0.5 n (calculateIntegrals ats)) ([M.empty,M.empty],[])
 
-hartreeFockStep :: Rl -> Int -> Integrals -> (Matrix Label,[Orbital]) -> (Matrix Label,[Orbital])
-hartreeFockStep s n (overlaps,nh,fei) (peeh,orbs) = (eeh, take n $ negativeEigenvecs $ addMat nh eeh)
-    where orbs' = map (\o -> (1/sqrt (dot o (matTimes overlaps o))::Cplx) *~ o) orbs
-          eeh = addMat ((1-s) *~ peeh) $ (s *~ eeHamiltonian fei orbs')
+hartreeFockStep :: Rl -> Int -> Integrals -> ([Matrix Label],[Orbital]) -> ([Matrix Label],[Orbital])
+hartreeFockStep s n (overlaps,nh,fei) (peeh,orbs) = (eeh, map snd $ take n $ foldr1 merge newOrbs)
+    where orbs' = map (fmap (\o -> (1/sqrt (dot o (matTimes overlaps o))::Cplx) *~ o)) orbs
+          eeh = zipWith (\a b -> addMat ((1-s) *~ a) $ (s *~ b)) peeh (eeHamiltonian fei orbs')
+          newOrbs = zipWith (\h s -> map (fmap (Just s,)) $ negativeEigenvecs $ addMat nh h) eeh [Up,Down]
+          merge [] ys = ys
+          merge xs [] = xs
+          merge (x:xs) (y:ys) = if x <= y then x : merge xs (y:ys) else y : merge (x:xs) ys
 
 overlaps :: (InnerProduct Cplx v, Ord a) => [(a,v)] -> Matrix a
 overlaps xs = M.fromList $ flip map xs (second $ \x -> Linear (map (\(l,x') -> (dot x x',l)) xs))

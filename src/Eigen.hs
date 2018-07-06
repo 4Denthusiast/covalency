@@ -68,19 +68,19 @@ slowRayleighIterate :: (InnerProduct Cplx a, Ord a) => Matrix a -> Cplx -> Linea
 slowRayleighIterate m μ v = case offsetInverse m μ of
     Nothing -> v
     Just m' -> let v' = normalize @Cplx $ matTimes m' v in
-        if min 1e-12 (eigenvectorQuality m v') > eigenvectorQuality m v then v else slowRayleighIterate m (0.7*μ+0.3*rayleighQuotient m v) v'
+        if min 1e-12 (eigenvectorQuality m v') >= eigenvectorQuality m v then v else slowRayleighIterate m (0.7*μ+0.3*rayleighQuotient m v) v'
 
 eigenvecNear :: (InnerProduct Cplx a, Ord a) => Matrix a -> Cplx -> Linear Cplx a
 eigenvecNear m μ0 = slowRayleighIterate m μ0 $ fromJust $ find ((<0.1).eigenvectorQuality m) $ drop 20 $ inverseIterants m μ0 $ arbitrary m
 
-negativeEigenvecs :: (InnerProduct Cplx a, Ord a) => Matrix a -> [Linear Cplx a]
+negativeEigenvecs :: (InnerProduct Cplx a, Ord a) => Matrix a -> [(Cplx,Linear Cplx a)]
 negativeEigenvecs m = negativeEigenvecsFrom m b
     where b = converged id $ iterate (eigenvalNear m . (\a -> minimum [a-1,a*18,-a])) 0
 
 -- Sometimes misses eigenvectors due to (presumably) numerical instability.
-negativeEigenvecsFrom :: (InnerProduct Cplx a, Ord a) => Matrix a -> Cplx -> [Linear Cplx a]
-negativeEigenvecsFrom m b = map traceQuality $ concatMap (fst . removeKernel . offsetMat m) $ takeWhile (<0) $ eigenvalsFrom m b
-    where traceQuality v = trace ("quality: " ++ show (eigenvectorQuality m v)) v
+negativeEigenvecsFrom :: (InnerProduct Cplx a, Ord a) => Matrix a -> Cplx -> [(Cplx,Linear Cplx a)]
+negativeEigenvecsFrom m b = map traceQuality $ concatMap (\μ -> map (μ,) $ fst $ removeKernel $ offsetMat m μ) $ takeWhile (<0) $ eigenvalsFrom m b
+    where traceQuality (μ,v) = trace ("quality: " ++ show (eigenvectorQuality m v)) (μ,v)
 
 eigenvalsFrom :: (InnerProduct Cplx a, Ord a) => Matrix a -> Cplx -> [Cplx]
 eigenvalsFrom m b = if M.null m then [] else seq m' b' : eigenvalsFrom m' b'

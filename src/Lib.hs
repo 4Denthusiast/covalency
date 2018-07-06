@@ -10,7 +10,8 @@ module Lib(
 
 import Linear
 import Gaussian
-import Atom
+import Atom hiding (Spin(..))
+import qualified Atom
 import Orbital
 import Render
 import Eigen
@@ -42,7 +43,7 @@ data World = World{
     worldValScale :: Rl,
     orbitalPicture :: Picture,
     worldIntegrals :: Integrals,
-    worldPrevEEHamiltonian :: Matrix Label
+    worldPrevEEHamiltonian :: [Matrix Label]
 }
 
 data InputState = Typing String | Editing String
@@ -51,7 +52,7 @@ viewLOD :: Int
 viewLOD = 4
 
 emptyWorld :: World
-emptyWorld = World (Typing []) M.empty ([],[]) 200 1 Blank undefined M.empty
+emptyWorld = World (Typing []) M.empty ([],[]) 200 1 Blank undefined [M.empty,M.empty]
 
 num :: (Real a, Fractional b) => a -> b
 num = fromRational . toRational
@@ -87,10 +88,13 @@ reRender w = w{orbitalPicture = renderOrbitals (worldViewScale w) (worldValScale
 
 renderOrbitals :: KnownNat n => Float -> Rl -> Atoms n -> [Orbital] -> Picture
 renderOrbitals _ _ _ [] = Blank
-renderOrbitals viewScale valScale atoms (o:_) = Scale lodF lodF $ bitmapOfOrbital px px (num viewScale / lodF) valScale o atoms
+renderOrbitals viewScale valScale atoms ((s,o):_) = Pictures [Scale lodF lodF $ bitmapOfOrbital px px (num viewScale / lodF) valScale o atoms, spin]
     where px   = div 800 viewLOD
           lodF :: Num a => a
           lodF = fromIntegral viewLOD
+          spin = Color white $ Translate (390) (390) $ (maybe Blank drawSpin s)
+          drawSpin Atom.Up   = Line [(-3, 3),(0, 6),(3, 3),(0, 6),(0,-6)]
+          drawSpin Atom.Down = Line [(-3,-3),(0,-6),(3,-3),(0,-6),(0, 6)]
 
 handleEvent :: Event -> World -> World
 handleEvent event w = case inputState w of
@@ -102,7 +106,7 @@ handleEvent event w = case inputState w of
     (Editing s) -> case event of
         (EventKey (SpecialKey KeyEnter) Down _ _) -> w{inputState = Typing s}
         (EventKey (Char 'r') Down _ _) -> w{worldIntegrals = calculateIntegrals atoms}
-        (EventKey (Char 'R') Down _ _) -> rr w{worldOrbitals = ([],[]), worldPrevEEHamiltonian = M.empty}
+        (EventKey (Char 'R') Down _ _) -> rr w{worldOrbitals = ([],[]), worldPrevEEHamiltonian = [M.empty,M.empty]}
         (EventKey (Char 'h') Down _ _) -> rr w{worldOrbitals = (hydrogenLikeOrbs ints,[])}
         (EventKey (Char n) Down _ _) | isDigit n -> rr $ hfStepWorld (0.5 ^ digitToInt n) w
         (EventKey (Char '[') Down _ _) -> traceShow (take 1 $ fst orbs) $ rr w{worldOrbitals = shiftRight orbs}
@@ -136,9 +140,9 @@ shiftRight (x:xs,xs') = (xs,x:xs')
 shiftRight (  [], []) = ([],[])
 
 hydrogenLikeOrbs :: Integrals -> [Orbital]
-hydrogenLikeOrbs (_,h,_) = negativeEigenvecs h
+hydrogenLikeOrbs (_,h,_) = map ((Nothing,) . snd) $ negativeEigenvecs h
 
 hfStepWorld :: Rl -> World -> World
 hfStepWorld s w = w{worldOrbitals = (orbs',[]), worldPrevEEHamiltonian = peeh'}
-    where (peeh', orbs') = hartreeFockStep s (div n 2) (worldIntegrals w) (worldPrevEEHamiltonian w, (\(o,o') -> reverse o' ++ o) $ worldOrbitals w)
+    where (peeh', orbs') = hartreeFockStep s n (worldIntegrals w) (worldPrevEEHamiltonian w, (\(o,o') -> reverse o' ++ o) $ worldOrbitals w)
           n = sum $ atomicNumber <$> worldAtoms w

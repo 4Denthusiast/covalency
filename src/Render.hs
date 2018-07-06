@@ -23,7 +23,7 @@ import GHC.TypeLits
 bitmapFormat :: BitmapFormat
 bitmapFormat = BitmapFormat BottomToTop PxRGBA
 
-bitmapOfOrbital :: KnownNat n => Int -> Int -> Rl -> Rl -> Orbital -> Atoms n -> Picture
+bitmapOfOrbital :: KnownNat n => Int -> Int -> Rl -> Rl -> Linear Cplx Label -> Atoms n -> Picture
 bitmapOfOrbital x y scale vScale orbital atoms = bitmapOfByteString x y bitmapFormat (BS.toStrict $ bytestringOfOrbital x y scale vScale (normalize @Cplx $ evalOrbital atoms orbital)) True
 
 bytestringOfOrbital :: forall n. KnownNat n => Int -> Int -> Rl -> Rl -> Gaussians n -> BS.ByteString

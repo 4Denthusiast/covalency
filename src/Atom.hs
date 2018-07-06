@@ -9,6 +9,7 @@ module Atom(
     OrbitalLabel,
     AtomLabel,
     Atoms,
+    Spin(..),
     newAtom,
     changeZ,
     atomOrbitalsGlobal,
@@ -30,6 +31,8 @@ import Debug.Trace
 type AtomLabel = String
 type L = Int
 type M = Int
+data Spin = Up | Down deriving (Eq, Ord)
+instance Show Spin where{show Up = "↑"; show Down = "↓"}
 type OrbitalLabel = (Int,L,M)
 data Atom (n::Nat) = Atom{
     atomPos :: [Rl],
@@ -42,7 +45,7 @@ type Atoms (n::Nat) = M.Map AtomLabel (Atom n)
 newAtom :: forall n. KnownNat n => Int -> [Rl] -> Atom n
 newAtom z xs = changeZ z $ Atom {
         atomPos = xs,
-        atomOrbitals = (M.fromList $ liftA2 (\i (l,m,p) -> ((i,l,m),normalize @Cplx $ return $ centralGaussian (e i) p)) [-3..2] (concatMap (\l -> zipWith (l,,) [0..] $ P.sphericalHarmonicPolys l) [0,1]))
+        atomOrbitals = (M.fromList $ liftA2 (\i (l,m,p) -> ((i,l,m),normalize @Cplx $ return $ centralGaussian (e i) p)) [-4..4] (concatMap (\l -> zipWith (l,,) [0..] $ P.sphericalHarmonicPolys l) [0,1]))
     }
     where e :: Floating a => Int -> a
           e = (exp . (1.5*) . fromIntegral)
