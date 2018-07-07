@@ -31,7 +31,7 @@ import Debug.Trace
 type AtomLabel = String
 type L = Int
 type M = Int
-data Spin = Up | Down deriving (Eq, Ord)
+data Spin = Up | Down deriving (Eq, Ord, Enum)
 instance Show Spin where{show Up = "↑"; show Down = "↓"}
 type OrbitalLabel = (Int,L,M)
 data Atom (n::Nat) = Atom{

@@ -1,6 +1,7 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 module Orbital(
     Orbital(..),
     Matrix,
@@ -11,6 +12,7 @@ module Orbital(
     nuclearHamiltonian,
     hartreeFockIterants,
     hartreeFockStep,
+    totalEnergy,
     matTimes,
     invert,
     doInvert,
@@ -96,6 +98,17 @@ hartreeFockStep s n (overlaps,nh,fei) (peeh,orbs) = (eeh, map snd $ take n $ fol
           merge [] ys = ys
           merge xs [] = xs
           merge (x:xs) (y:ys) = if x <= y then x : merge xs (y:ys) else y : merge (x:xs) ys
+
+-- Doesn't work with orbitals that don't have a spin.
+totalEnergy :: forall n. KnownNat n => Atoms n -> Integrals -> [Matrix Label] -> [Orbital] -> Rl
+totalEnergy ats (overlaps, nh, fei) eeh orbs = sum (map orbEnergy orbs) + atomEnergy
+    where orbEnergy (s,o) = realPart $ matTimes overlaps o `dot` (matTimes nh o <> (0.5::Rl) *~ matTimes (getEeh s) o) / matTimes overlaps o `dot` o
+          getEeh (Just s) = eeh !! fromEnum s
+          atomEnergy = sum $ map (uncurry atomLabelPairEnergy) $ filter (uncurry (>)) $ (,) <$> atList <*> atList
+          atList = M.keys ats
+          atomLabelPairEnergy x y = atomPairEnergy (ats M.! x) (ats M.! y)
+          atomPairEnergy x y = fromIntegral (atomicNumber x * atomicNumber y) * dist x y ^^ (2 - (natVal @n) Proxy)
+          dist x y = sqrt (norm2 (zipWith (-) (atomPos x) (atomPos y)))
 
 overlaps :: (InnerProduct Cplx v, Ord a) => [(a,v)] -> Matrix a
 overlaps xs = M.fromList $ flip map xs (second $ \x -> Linear (map (\(l,x') -> (dot x x',l)) xs))

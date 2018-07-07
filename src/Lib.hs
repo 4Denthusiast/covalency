@@ -32,7 +32,7 @@ someFunc = interactIO
     black
     emptyWorld
     (return . renderWorld)
-    ((return .) . handleEvent)
+    handleEvent
     (const (pure ()))
 
 data World = World{
@@ -43,7 +43,8 @@ data World = World{
     worldValScale :: Rl,
     orbitalPicture :: Picture,
     worldIntegrals :: Integrals,
-    worldPrevEEHamiltonian :: [Matrix Label]
+    worldPrevEEHamiltonian :: [Matrix Label],
+    worldCharge :: Int
 }
 
 data InputState = Typing String | Editing String
@@ -52,16 +53,20 @@ viewLOD :: Int
 viewLOD = 4
 
 emptyWorld :: World
-emptyWorld = World (Typing []) M.empty ([],[]) 200 1 Blank undefined [M.empty,M.empty]
+emptyWorld = World (Typing []) M.empty ([],[]) 200 1 Blank undefined [M.empty,M.empty] 0
 
 num :: (Real a, Fractional b) => a -> b
 num = fromRational . toRational
+
+worldOrbitals' :: World -> [Orbital]
+worldOrbitals' = (\(o,o') -> reverse o' ++ o) . worldOrbitals
 
 renderWorld :: World -> Picture
 renderWorld w = pictures $
     orbitalPicture w :
     renderInput (inputState w) :
     renderAtomicNumber (inputState w) (worldAtoms w) :
+    renderCharge (worldCharge w) :
     renderScales (worldViewScale w) :
     map (uncurry (renderAtom (worldViewScale w))) (M.toList (worldAtoms w))
 
@@ -77,6 +82,10 @@ renderAtomicNumber i ats = Color white $ Translate (-390) (-390) $ Scale 0.2 0.2
     where s = case i of {(Typing s) -> s; (Editing s) -> s}
           at = M.lookup s ats
           z = maybe "" (show . atomicNumber) at
+
+renderCharge :: Int -> Picture
+renderCharge q = Color white $ Translate (-390) (-360) $ Scale 0.2 0.2 $ Text ("Q="++s)
+    where s = if q <= 0 then show q else '+':show q
 
 renderScales :: Float -> Picture
 renderScales vs = Color white $ Pictures [bar, t]
@@ -96,24 +105,32 @@ renderOrbitals viewScale valScale atoms ((s,o):_) = Pictures [Scale lodF lodF $ 
           drawSpin Atom.Up   = Line [(-3, 3),(0, 6),(3, 3),(0, 6),(0,-6)]
           drawSpin Atom.Down = Line [(-3,-3),(0,-6),(3,-3),(0,-6),(0, 6)]
 
-handleEvent :: Event -> World -> World
+worldEnergy :: World -> Rl
+worldEnergy w = totalEnergy (worldAtoms w) (worldIntegrals w) (worldPrevEEHamiltonian w) (worldOrbitals' w)
+
+handleEvent :: Event -> World -> IO World
 handleEvent event w = case inputState w of
     (Typing s) -> case event of
-        (EventKey (Char '\b') Down _ _) -> w{inputState = Typing (if null s then s else init s)}
-        (EventKey (Char c) Down _ _) -> w{inputState = Typing (s++[c])}
-        (EventKey (SpecialKey KeyEnter) Down _ _) -> w{inputState = Editing s}
+        (EventKey (Char '\b') Down _ _) -> pure $ w{inputState = Typing (if null s then s else init s)}
+        (EventKey (Char c) Down _ _) -> pure $ w{inputState = Typing (s++[c])}
+        (EventKey (SpecialKey KeyEnter) Down _ _) -> pure $ w{inputState = Editing s}
         _ -> both s
     (Editing s) -> case event of
-        (EventKey (SpecialKey KeyEnter) Down _ _) -> w{inputState = Typing s}
-        (EventKey (Char 'r') Down _ _) -> w{worldIntegrals = calculateIntegrals atoms}
-        (EventKey (Char 'R') Down _ _) -> rr w{worldOrbitals = ([],[]), worldPrevEEHamiltonian = [M.empty,M.empty]}
-        (EventKey (Char 'h') Down _ _) -> rr w{worldOrbitals = (hydrogenLikeOrbs ints,[])}
-        (EventKey (Char n) Down _ _) | isDigit n -> rr $ hfStepWorld (0.5 ^ digitToInt n) w
-        (EventKey (Char '[') Down _ _) -> traceShow (take 1 $ fst orbs) $ rr w{worldOrbitals = shiftRight orbs}
-        (EventKey (Char ']') Down _ _) -> rr w{worldOrbitals = shiftLeft orbs}
-        (EventKey (SpecialKey KeyDelete) Down _ _) -> rr w{worldOrbitals = ([],[]), worldAtoms = M.delete s atoms}
-        (EventKey (Char '+') Down _ _) -> w{worldAtoms = M.adjust (\a -> changeZ (atomicNumber a + 1) a) s atoms}
-        (EventKey (Char '-') Down _ _) -> w{worldAtoms = M.adjust (\a -> changeZ (max 1 $ atomicNumber a - 1) a) s atoms}
+        (EventKey (SpecialKey KeyEnter) Down _ _) -> pure $ w{inputState = Typing s}
+        (EventKey (Char 'r') Down _ _) -> pure $ w{worldIntegrals = calculateIntegrals atoms}
+        (EventKey (Char 'R') Down _ _) -> pure $ rr w{worldOrbitals = ([],[]), worldPrevEEHamiltonian = [M.empty,M.empty]}
+        (EventKey (Char 'h') Down _ _) -> pure $ rr w{worldOrbitals = (hydrogenLikeOrbs ints,[])}
+        (EventKey (Char n) Down _ _) | isDigit n -> pure $ rr $ hfStepWorld (0.5 ^ digitToInt n) w
+        (EventKey (Char '[') Down _ _) -> pure $ traceShow (take 1 $ fst orbs) $ rr w{worldOrbitals = shiftRight orbs}
+        (EventKey (Char ']') Down _ _) -> pure $ rr w{worldOrbitals = shiftLeft orbs}
+        (EventKey (SpecialKey KeyDelete) Down _ _) -> pure $ rr w{worldOrbitals = ([],[]), worldAtoms = M.delete s atoms}
+        (EventKey (Char '+') Down mod _) -> pure $ case ctrl mod of
+            Down -> w{worldCharge = worldCharge w + 1}
+            Up   -> w{worldAtoms = M.adjust (\a -> changeZ (atomicNumber a + 1) a) s atoms}
+        (EventKey (Char '-') Down mod _) -> pure $ case ctrl mod of
+            Down -> w{worldCharge = worldCharge w - 1}
+            Up   -> w{worldAtoms = M.adjust (\a -> changeZ (max 1 $ atomicNumber a - 1) a) s atoms}
+        (EventKey (Char 'e') Down _ _) -> putStrLn ("Energy: "++show (worldEnergy w)) >> pure w
         _ -> both s
     where atoms = worldAtoms w
           orbs  = worldOrbitals w
@@ -124,10 +141,10 @@ handleEvent event w = case inputState w of
           d     = 3 --TODO explicitly link this to the dimension of the atoms.
           pos (x,y) = [num $ x/viewScale, num $ y/viewScale, 0]
           both s = case event of
-              (EventKey (MouseButton LeftButton) Down _ p) -> rr w{worldAtoms = M.alter (Just . maybe (newAtom 1 (pos p)) (\a -> a{atomPos = pos p})) s atoms}
-              (EventKey (MouseButton WheelDown) Down _ _) -> rr w{worldViewScale = viewScale / 2, worldValScale = valScale * (2 ** (d/2))}
-              (EventKey (MouseButton WheelUp  ) Down _ _) -> rr w{worldViewScale = viewScale * 2, worldValScale = valScale / (2 ** (d/2))} 
-              _ -> w
+              (EventKey (MouseButton LeftButton) Down _ p) -> pure $ rr w{worldAtoms = M.alter (Just . maybe (newAtom 1 (pos p)) (\a -> a{atomPos = pos p})) s atoms}
+              (EventKey (MouseButton WheelDown) Down _ _) -> pure $ rr w{worldViewScale = viewScale / 2, worldValScale = valScale * (2 ** (d/2))}
+              (EventKey (MouseButton WheelUp  ) Down _ _) -> pure $ rr w{worldViewScale = viewScale * 2, worldValScale = valScale / (2 ** (d/2))} 
+              _ -> pure $ w
 
 shiftLeft :: ([a],[a]) -> ([a],[a])
 shiftLeft ([],[]) = ([],[])
@@ -144,5 +161,5 @@ hydrogenLikeOrbs (_,h,_) = map ((Nothing,) . snd) $ negativeEigenvecs h
 
 hfStepWorld :: Rl -> World -> World
 hfStepWorld s w = w{worldOrbitals = (orbs',[]), worldPrevEEHamiltonian = peeh'}
-    where (peeh', orbs') = hartreeFockStep s n (worldIntegrals w) (worldPrevEEHamiltonian w, (\(o,o') -> reverse o' ++ o) $ worldOrbitals w)
-          n = sum $ atomicNumber <$> worldAtoms w
+    where (peeh', orbs') = hartreeFockStep s n (worldIntegrals w) (worldPrevEEHamiltonian w, worldOrbitals' w)
+          n = (sum $ atomicNumber <$> worldAtoms w) - worldCharge w
