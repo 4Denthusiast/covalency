@@ -10,6 +10,7 @@ module Atom(
     AtomLabel,
     Atoms,
     Spin(..),
+    L,M,
     newAtom,
     changeZ,
     atomOrbitalsGlobal,

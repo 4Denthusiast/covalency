@@ -10,17 +10,20 @@ module Orbital(
     evalOrbital,
     calculateIntegrals,
     nuclearHamiltonian,
+    eeHamiltonian,
     hartreeFockIterants,
     hartreeFockStep,
     totalEnergy,
     matTimes,
+    normalizeWith,
+    addMat,
     invert,
     doInvert,
     tabulate,
-    swap,
     showMatrix,
 ) where
 
+import Util
 import Linear
 import Gaussian
 import Potential
@@ -38,6 +41,7 @@ import Data.Monoid
 import Control.Applicative
 import GHC.TypeLits
 import Debug.Trace
+import GHC.Stack
 
 type Label = (AtomLabel, OrbitalLabel)
 type Orbital = (Maybe Spin, Linear Cplx Label)
@@ -81,7 +85,7 @@ eeHamiltonian fei orbs = foldr (zipWith addMat) [M.empty,M.empty] $ map orbField
     where orbField (s,o) = case s of
               Just Up   -> [addMat (coulumb o) (exchange o), coulumb o]
               Just Down -> [coulumb o, addMat (coulumb o) (exchange o)]
-              Nothing   -> replicate 2 $ addMat ((2::Rl) *~ coulumb o) (exchange o)
+              Nothing   -> [addMat ((2::Rl) *~ coulumb o) (exchange o)]
           coulumb o = flatten' ((tei o M.!) <$> o)
           exchange o = ((-1::Rl) *~ (flip matTimes o <$> tei o))
           tei o = fmap (flatten' . (<$> o) . (M.!)) fei
@@ -92,12 +96,9 @@ hartreeFockIterants ats n = map snd $ iterate (hartreeFockStep 0.5 n (calculateI
 
 hartreeFockStep :: Rl -> Int -> Integrals -> ([Matrix Label],[Orbital]) -> ([Matrix Label],[Orbital])
 hartreeFockStep s n (overlaps,nh,fei) (peeh,orbs) = (eeh, map snd $ take n $ foldr1 merge newOrbs)
-    where orbs' = map (fmap (\o -> (1/sqrt (dot o (matTimes overlaps o))::Cplx) *~ o)) orbs
+    where orbs' = map (fmap (normalizeWith overlaps)) orbs
           eeh = zipWith (\a b -> addMat ((1-s) *~ a) $ (s *~ b)) peeh (eeHamiltonian fei orbs')
           newOrbs = zipWith (\h s -> map (fmap (Just s,)) $ negativeEigenvecs $ addMat nh h) eeh [Up,Down]
-          merge [] ys = ys
-          merge xs [] = xs
-          merge (x:xs) (y:ys) = if x <= y then x : merge xs (y:ys) else y : merge (x:xs) ys
 
 -- Doesn't work with orbitals that don't have a spin.
 totalEnergy :: forall n. KnownNat n => Atoms n -> Integrals -> [Matrix Label] -> [Orbital] -> Rl
@@ -122,8 +123,11 @@ calculateIntegrals ats = (orbitalOverlaps ats, nuclearHamiltonian ats, fourElect
 doInvert :: forall a. (Ord a) => Matrix a -> Matrix a
 doInvert = maybe (error "Singular matrix") id . invert
 
-matTimes :: Ord a => Matrix a -> Linear Cplx a -> Linear Cplx a
+matTimes :: (HasCallStack, Ord a) => Matrix a -> Linear Cplx a -> Linear Cplx a
 matTimes m v = reduce $ (m M.!) =<< v
+
+normalizeWith :: (InnerProduct Cplx a, Ord a) => Matrix a -> Linear Cplx a -> Linear Cplx a
+normalizeWith m o = (1/sqrt (dot o (matTimes m o))::Cplx) *~ o
 
 invert :: forall a. (Ord a) => Matrix a -> Maybe (Matrix a)
 invert m0 = invert' m0 m0' xs0
@@ -153,8 +157,6 @@ mapTranspose = M.foldl (M.unionWith M.union) M.empty . M.mapWithKey (\k m' -> M.
 
 addMat :: Ord a => Matrix a -> Matrix a -> Matrix a
 addMat = M.unionWith (\a b -> reduce (a <> b))
-
-swap (x,y) = (y,x)
 
 showMatrix :: (Show a, Ord a) => Matrix a -> String
 showMatrix m = intercalate "\n" $ zipWith (++) xsl $ map (intercalate ", ") $ transpose $ map registerColumn $ zipWith ((:) . show) xs $ map (map (show . realPart)) cs

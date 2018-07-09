@@ -5,7 +5,6 @@ module Orbital(
     invert,
     doInvert,
     tabulate,
-    swap,
 ) where
 
 import Linear
@@ -17,12 +16,13 @@ import Data.Bifunctor
 import Data.Monoid
 import Control.Applicative
 import GHC.TypeLits
+import GHC.Stack
 
 type Matrix a = M.Map a (Linear Cplx a)
 
 overlaps :: (InnerProduct Cplx v, Ord a) => [(a,v)] -> Matrix a
 
-matTimes :: Ord a => Matrix a -> Linear Cplx a -> Linear Cplx a
+matTimes :: (HasCallStack, Ord a) => Matrix a -> Linear Cplx a -> Linear Cplx a
 
 invert :: (Ord a) => Matrix a -> Maybe (Matrix a)
 

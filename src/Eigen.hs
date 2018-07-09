@@ -56,7 +56,9 @@ offsetInverse :: (Ord a) => Matrix a -> Cplx -> Maybe (Matrix a)
 offsetInverse m μ = invert $ offsetMat m μ
 
 inverseIterants :: (InnerProduct Cplx a, Ord a) => Matrix a -> Cplx -> Linear Cplx a -> [Linear Cplx a]
-inverseIterants m μ v = iterate (normalize @Cplx . matTimes (fromJust $ offsetInverse m μ)) v
+inverseIterants m μ v = maybe (repeat $ head ker) actuallyIterate $ offsetInverse m μ
+    where actuallyIterate m' = iterate (normalize @Cplx . matTimes m') v
+          (ker,_) = removeKernel $ offsetMat m μ
 
 rayleighIterate :: (InnerProduct Cplx a, Ord a) => Matrix a -> Linear Cplx a -> Linear Cplx a
 rayleighIterate m v = case offsetInverse m $ rayleighQuotient m v of
