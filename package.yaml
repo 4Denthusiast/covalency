@@ -27,6 +27,7 @@ library:
   - gloss >= 1.12 && < 2
   - containers
   - bytestring
+  - unix
 
 executables:
   covalent-prototype-exe:

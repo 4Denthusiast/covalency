@@ -31,7 +31,7 @@ import Control.Monad
 import Data.Bifunctor
 import Data.Complex
 
-data Linear f a = Linear [(f,a)] deriving (Ord, Eq, Show)
+data Linear f a = Linear [(f,a)] deriving (Ord, Eq, Show, Read)
 
 instance Semigroup (Linear f a) where
     (Linear a) <> (Linear b) = Linear (a++b)

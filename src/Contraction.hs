@@ -4,6 +4,8 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DataKinds #-}
 module Contraction(
+    loadAtomWithBasis,
+    basisify,
 ) where
 
 import Util
@@ -22,6 +24,7 @@ import Control.Monad
 import Data.Monoid
 import Data.Bifunctor
 import Data.Complex
+import System.Posix.Files
 import GHC.TypeLits
 import Debug.Trace
 
@@ -68,7 +71,7 @@ basisConverged (x:x':xs) = if similar x x' then x' else basisConverged (x':xs)
 
 -- Iterate the basis towards convergence, taking the occupancy to smoothly drop to 0 wrt energy.
 stepBasis :: forall n. KnownNat n => Int -> Integrals -> (Matrix Label,[(L,Linear Cplx Int)]) -> (Matrix Label,[(L,Linear Cplx Int)])
-stepBasis z (ov,nh,fei) (peeh,b) = trace "Step." (eeh,b')
+stepBasis z (ov,nh,fei) (peeh,b) = (eeh,b')
     where h = addMat nh peeh
           -- Split a matrix representing a spherically-symmetric operator into components wrt L.
           splitMat :: Matrix Label -> [Matrix Int]
@@ -93,7 +96,7 @@ stepBasis z (ov,nh,fei) (peeh,b) = trace "Step." (eeh,b')
           tOrbs = if isNothing eInit then orbs else takeWhile ((<0.6*e0) . fst) orbs
           neeh = foldr addMat M.empty $ map (\(e,(l,o)) -> weight e0 e *~ head (eeHamiltonian fei (map (\m -> (Nothing,("",) <$> (,l,m) <$> o)) [0..thisMultiplicity l - 1]))) tOrbs
           eeh = addMat ((0.6::Cplx) *~ peeh) ((0.4::Cplx) *~ neeh)
-          b' = traceShow (map (\(e,o) -> (weight e0 e,e,o)) tOrbs) $ map snd tOrbs
+          b' = map snd tOrbs
 
 -- Explicitly memoise because this is used lots.
 multiplicity :: (Integral i, Num n) => i -> L -> n
@@ -109,5 +112,22 @@ binomial a b
     | b == 0                   = 1
     | otherwise                = div (binomial a (b-1) * (a-b+1)) b
 
-debugBasis :: BasisSet
-debugBasis = minimalBasisSet @3 1
+loadAtomWithBasis :: forall n. KnownNat n => [Rl] -> Int -> IO (Atom n)
+loadAtomWithBasis xs z = atomWithBasis xs z <$> (loadBasis @n) z
+
+basisify :: KnownNat n => Atom n -> IO (Atom n)
+basisify at = loadAtomWithBasis (atomPos at) (atomicNumber at)
+
+atomWithBasis :: KnownNat n => [Rl] -> Int -> BasisSet -> Atom n
+atomWithBasis xs z basis = changeZ z $ Atom{
+        atomPos = xs,
+        atomOrbitals = fmap (normalize @Cplx) $ M.fromList $ concat $ zipWith (\(l,cs) n -> zipWith (\p m -> ((n,l,m),flip centralGaussian p <$> cs)) (P.sphericalHarmonicPolys l) [0..]) basis [0..]
+    }
+
+loadBasis :: forall n. KnownNat n => Int -> IO BasisSet
+loadBasis z = putFolder >> putBasis >> readBasis
+    where filePath = "bases/"++show d++"D "++show z++".txt"
+          d = natVal @n Proxy
+          putFolder = return ()
+          putBasis = fileExist filePath >>= \e -> if e then return () else writeFile filePath (show $ minimalBasisSet @n z)
+          readBasis = read <$> readFile filePath

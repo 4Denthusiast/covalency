@@ -15,6 +15,7 @@ import qualified Atom
 import Orbital
 import Render
 import Eigen
+import Contraction
 
 import Graphics.Gloss
 import Graphics.Gloss.Interface.IO.Interact
@@ -131,6 +132,7 @@ handleEvent event w = case inputState w of
             Down -> w{worldCharge = worldCharge w - 1}
             Up   -> w{worldAtoms = M.adjust (\a -> changeZ (max 1 $ atomicNumber a - 1) a) s atoms}
         (EventKey (Char 'e') Down _ _) -> putStrLn ("Energy: "++show (worldEnergy w)) >> pure w
+        (EventKey (Char 'c') Down _ _) -> (\a -> w{worldAtoms = M.insert s a atoms}) <$> basisify (atoms M.! s)
         _ -> both s
     where atoms = worldAtoms w
           orbs  = worldOrbitals w
