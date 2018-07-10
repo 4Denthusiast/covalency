@@ -107,7 +107,7 @@ renderOrbitals viewScale valScale atoms ((s,o):_) = Pictures [Scale lodF lodF $ 
           drawSpin Atom.Down = Line [(-3,-3),(0,-6),(3,-3),(0,-6),(0, 6)]
 
 worldEnergy :: World -> Rl
-worldEnergy w = totalEnergy (worldAtoms w) (worldIntegrals w) (worldPrevEEHamiltonian w) (worldOrbitals' w)
+worldEnergy w = totalEnergy (worldAtoms w) (worldIntegrals w) (worldOrbitals' w)
 
 handleEvent :: Event -> World -> IO World
 handleEvent event w = case inputState w of

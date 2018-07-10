@@ -101,10 +101,11 @@ hartreeFockStep s n (overlaps,nh,fei) (peeh,orbs) = (eeh, map snd $ take n $ fol
           newOrbs = zipWith (\h s -> map (fmap (Just s,)) $ negativeEigenvecs $ addMat nh h) eeh [Up,Down]
 
 -- Doesn't work with orbitals that don't have a spin.
-totalEnergy :: forall n. KnownNat n => Atoms n -> Integrals -> [Matrix Label] -> [Orbital] -> Rl
-totalEnergy ats (overlaps, nh, fei) eeh orbs = sum (map orbEnergy orbs) + atomEnergy
+totalEnergy :: forall n. KnownNat n => Atoms n -> Integrals -> [Orbital] -> Rl
+totalEnergy ats (overlaps, nh, fei) orbs = sum (map orbEnergy orbs) + atomEnergy
     where orbEnergy (s,o) = realPart $ matTimes overlaps o `dot` (matTimes nh o <> (0.5::Rl) *~ matTimes (getEeh s) o) / matTimes overlaps o `dot` o
           getEeh (Just s) = eeh !! fromEnum s
+          eeh = eeHamiltonian fei $ map (fmap (normalizeWith overlaps)) orbs
           atomEnergy = sum $ map (uncurry atomLabelPairEnergy) $ filter (uncurry (>)) $ (,) <$> atList <*> atList
           atList = M.keys ats
           atomLabelPairEnergy x y = atomPairEnergy (ats M.! x) (ats M.! y)
