@@ -10,12 +10,14 @@ module Polynomial(
     constant,
     variable,
     degree,
+    monomial,
     monomialSum,
     monomialSum',
     evaluate,
     evaluate',
     laplacian,
     sphericalHarmonicPolys,
+    NamedDimensions(..),
 ) where
 
 import Linear
@@ -62,6 +64,9 @@ variable i = Polynomial [Monomial 1 es]
 degree :: Polynomial n a -> Int
 degree (Polynomial []) = -1 -- negative infinity is the usual convention, but making this an Int seems more appropriate.
 degree (Polynomial (Monomial _ es : _)) = sum es
+
+monomial :: forall n a. (Num a, KnownNat n) => [Int] -> Polynomial n a
+monomial es = seq (if length es == fromIntegral (natVal @n Proxy) then () else error "incorrect number of exponents") (Polynomial [Monomial 1 es])
 
 instance (Eq a, Num a, KnownNat n) => Num (Polynomial n a) where
     (Polynomial xs) + (Polynomial ys) = simplifyPoly (xs ++ ys)

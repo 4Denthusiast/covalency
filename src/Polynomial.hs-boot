@@ -12,12 +12,14 @@ module Polynomial(
     constant,
     variable,
     degree,
+    monomial,
     monomialSum,
     monomialSum',
     evaluate,
     evaluate',
     laplacian,
     sphericalHarmonicPolys,
+    NamedDimensions(..),
 ) where
 
 import Linear
@@ -42,6 +44,8 @@ constant :: forall a n. (KnownNat n, Eq a, Num a) => a -> Polynomial n a
 variable :: forall a n. (KnownNat n, Eq a, Num a) => Int -> Polynomial n a
 
 degree :: Polynomial n a -> Int
+
+monomial :: forall n a. (Num a, KnownNat n) => [Int] -> Polynomial n a
 
 instance (Eq a, Num a, KnownNat n) => Num (Polynomial n a) where
 

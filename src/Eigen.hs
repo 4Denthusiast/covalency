@@ -41,8 +41,9 @@ arbitrary = reduce . foldr (<>) mempty
 
 -- Can't exclude linear combinations of eigenvectors with almost-equal values.
 eigenvectorQuality :: (InnerProduct Cplx a, Ord a) => Matrix a -> Linear Cplx a -> Cplx
-eigenvectorQuality m v = norm (v' <> (-(dot v v' / dot v v)::Cplx) *~ v)
-    where v' = matTimes m v
+eigenvectorQuality m v0 = norm (v' <> (-dot v v' ::Cplx) *~ v)
+    where v = normalize @Cplx v0
+          v' = matTimes m v
           norm x = dot x x
 
 powerConvergent :: (InnerProduct Cplx a, Ord a) => Matrix a -> Linear Cplx a

@@ -88,10 +88,7 @@ laplacian :: forall n. KnownNat n => Gaussian n -> Gaussian n
 laplacian (Gaussian xs c a) = Gaussian xs c $ sum $ map (\i -> d i (d i a)) [0..fromIntegral $ natVal @n Proxy - 1]
     where d :: Int -> Polynomial n Cplx -> Polynomial n Cplx
           d i p = P.monomialSum (dMon . splitAt i) p - (2 / c) *~ p * P.variable i
-          dMon (h,e:t) = fromIntegral e * mon (h ++ (e-1) : t)
-          mon es = mon' 0 es
-          mon' n (e:es) = if e < 0 then 0 else (P.variable n ^ e) * mon' (n+1) es
-          mon' _ [] = 1
+          dMon (h,e:t) = fromIntegral e * P.monomial (h ++ (e-1) : t)
 
 norm2 :: Num n => [n] -> n
 norm2 = sum . map (^2)

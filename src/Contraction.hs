@@ -30,10 +30,10 @@ import Debug.Trace
 
 type BasisSet = [(L,Linear Cplx Rl)]
 
-minimalBasisSet :: forall n. KnownNat n => Int -> BasisSet
+minimalBasisSet :: forall n. UsableDimension n => Int -> BasisSet
 minimalBasisSet = minimalBasisSetFrom @n (-1) 1 1
 
-minimalBasisSetFrom :: forall n. KnownNat n => Int -> Int -> L -> Int -> BasisSet
+minimalBasisSetFrom :: forall n. UsableDimension n => Int -> Int -> L -> Int -> BasisSet
 minimalBasisSetFrom inner outer l0 z = if insufficientBounds then expanded else b'
     where insufficientBounds = inner' < inner || outer' > outer || l0' > l0
           expanded = minimalBasisSetFrom @n inner' outer' l0' z 
@@ -45,7 +45,7 @@ minimalBasisSetFrom inner outer l0 z = if insufficientBounds then expanded else 
           linEls (Linear xs) = map snd xs
           b = minimalBasisOf (testAtom @n inner outer l0 z)
 
-testAtom :: forall n. KnownNat n => Int -> Int -> L -> Int -> Atom n
+testAtom :: forall n. UsableDimension n => Int -> Int -> L -> Int -> Atom n
 testAtom inner outer l0 z = changeZ z $ Atom {
         atomPos = genericReplicate (natVal @n Proxy) 0,
         atomOrbitals = (M.fromList $ liftA2 (\i (l,m,p) -> ((i,l,m),normalize @Cplx $ return $ centralGaussian (expSize i) p)) [inner..outer] (concatMap (\l -> zipWith (l,,) [0..] $ P.sphericalHarmonicPolys l) [0..l0]))
@@ -54,7 +54,7 @@ testAtom inner outer l0 z = changeZ z $ Atom {
 expSize :: Floating a => Int -> a
 expSize = (exp . (1.5*) . fromIntegral)
 
-minimalBasisOf :: forall n. KnownNat n => Atom n -> [(L,Linear Cplx Int)]
+minimalBasisOf :: forall n. UsableDimension n => Atom n -> [(L,Linear Cplx Int)]
 minimalBasisOf at = fmap (fmap trimBasisEl) $ basisConverged $ map snd $ iterate (stepBasis @n z ints) (M.empty, [])
     where ints = calculateIntegrals $ M.singleton "" at
           trimBasisEl (Linear xs) = Linear $ filter ((>1e-2) . abs . fst) xs
@@ -112,19 +112,19 @@ binomial a b
     | b == 0                   = 1
     | otherwise                = div (binomial a (b-1) * (a-b+1)) b
 
-loadAtomWithBasis :: forall n. KnownNat n => [Rl] -> Int -> IO (Atom n)
+loadAtomWithBasis :: forall n. UsableDimension n => [Rl] -> Int -> IO (Atom n)
 loadAtomWithBasis xs z = atomWithBasis xs z <$> (loadBasis @n) z
 
-basisify :: KnownNat n => Atom n -> IO (Atom n)
+basisify :: UsableDimension n => Atom n -> IO (Atom n)
 basisify at = loadAtomWithBasis (atomPos at) (atomicNumber at)
 
-atomWithBasis :: KnownNat n => [Rl] -> Int -> BasisSet -> Atom n
+atomWithBasis :: UsableDimension n => [Rl] -> Int -> BasisSet -> Atom n
 atomWithBasis xs z basis = changeZ z $ Atom{
         atomPos = xs,
         atomOrbitals = fmap (normalize @Cplx) $ M.fromList $ concat $ zipWith (\(l,cs) n -> zipWith (\p m -> ((n,l,m),flip centralGaussian p <$> cs)) (P.sphericalHarmonicPolys l) [0..]) basis [0..]
     }
 
-loadBasis :: forall n. KnownNat n => Int -> IO BasisSet
+loadBasis :: forall n. UsableDimension n => Int -> IO BasisSet
 loadBasis z = putFolder >> putBasis >> readBasis
     where filePath = "bases/"++show d++"D "++show z++".txt"
           d = natVal @n Proxy

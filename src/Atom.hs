@@ -15,6 +15,7 @@ module Atom(
     changeZ,
     atomOrbitalsGlobal,
     atomPotentialGlobal,
+    UsableDimension,
 ) where
 
 import Linear
@@ -43,7 +44,7 @@ data Atom (n::Nat) = Atom{
 }
 type Atoms (n::Nat) = M.Map AtomLabel (Atom n)
 
-newAtom :: forall n. KnownNat n => Int -> [Rl] -> Atom n
+newAtom :: forall n. UsableDimension n => Int -> [Rl] -> Atom n
 newAtom z xs = changeZ z $ Atom {
         atomPos = xs,
         atomOrbitals = (M.fromList $ liftA2 (\i (l,m,p) -> ((i,l,m),normalize @Cplx $ return $ centralGaussian (e i) p)) [-4..4] (concatMap (\l -> zipWith (l,,) [0..] $ P.sphericalHarmonicPolys l) [0,1]))
@@ -51,7 +52,7 @@ newAtom z xs = changeZ z $ Atom {
     where e :: Floating a => Int -> a
           e = (exp . (1.5*) . fromIntegral)
 
-changeZ :: KnownNat n => Int -> Atom n -> Atom n
+changeZ :: UsableDimension n => Int -> Atom n -> Atom n
 changeZ z at = at{
         atomicNumber = z,
         atomPotential = ((fromIntegral z*) . negate . coulumbPotential)

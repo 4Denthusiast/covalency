@@ -90,9 +90,11 @@ instance Num f => Vector f f where (*~) = (*)
 instance Num f => Vector f (Linear f a) where (*~) = scale
 instance Floating f => Vector f (Complex f) where a *~ b = (a *) <$> b
 instance Vector Int Cplx where n *~ x = fromIntegral n * x
+instance Vector Int Rl   where n *~ x = fromIntegral n * x
 instance {-# OVERLAPS #-} (Vector a b, Num b) => Vector a (Linear b x) where
     (*~) = towerScale @b
 instance Vector f a => Vector f (M.Map k a) where (*~) = fmap . (*~)
+instance (Vector f a, Vector f b) => Vector f (a,b) where x *~ (a,b) = (x *~ a, x *~ b)
 
 towerScale :: forall a f b. (Num a, Vector f a, Vector a b) => f -> b -> b
 towerScale f b = (f *~ (1 :: a)) *~ b

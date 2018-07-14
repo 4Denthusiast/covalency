@@ -53,7 +53,7 @@ evalOrbital :: KnownNat n => Atoms n -> Linear Cplx Label -> Gaussians n
 evalOrbital as o = reduce $ o >>= (\(al,ol) -> atomOrbitalsGlobal (as M.! al) M.! ol)
 
 nuclearHamiltonian :: KnownNat n => Atoms n -> Matrix Label
-nuclearHamiltonian ats = M.unions $ map atomH (M.toList ats)
+nuclearHamiltonian ats = traceShowMatId $ M.unions $ map atomH (M.toList ats)
     where --atomH :: (AtomLabel, Atom n) -> Matrix Label
           atomH (al, at) = M.mapKeysMonotonic (al,) $ M.mapWithKey (\ol o -> orbH ol o al) (atomOrbitalsGlobal at)
           orbH ol o al = reduce $ approximate (overlapsH o)
@@ -64,7 +64,7 @@ nuclearHamiltonian ats = M.unions $ map atomH (M.toList ats)
           totalPotential o = sum $ map (flip atomPotentialGlobal o) (M.elems ats)
 
 -- this ! a ! b ! c = int(r) (r-r')^(2-d)|c⟩⟨a|δ(r)|b⟩
-fourElectronIntegrals :: KnownNat n => Atoms n -> Map Label (Map Label (Matrix Label))
+fourElectronIntegrals :: UsableDimension n => Atoms n -> Map Label (Map Label (Matrix Label))
 fourElectronIntegrals ats = strict $ tabulate allLabels (\a -> tabulate allLabels (\b -> tabulate allLabels (col a b)))
     where col :: Label -> Label -> Label -> Linear Cplx Label
           col a b c = traceCol a b c $ approximate $ mapToLinear $ tabulate allLabels (getFei a b c)
@@ -91,7 +91,7 @@ eeHamiltonian fei orbs = foldr (zipWith addMat) [M.empty,M.empty] $ map orbField
           tei o = fmap (flatten' . (<$> o) . (M.!)) fei
           flatten' (Linear ms) = foldr addMat M.empty $ map (uncurry (*~)) ms --Can't just use flatten as Map has the wrong monoid instance.
 
-hartreeFockIterants :: KnownNat n => Atoms n -> Int -> [[Orbital]]
+hartreeFockIterants :: UsableDimension n => Atoms n -> Int -> [[Orbital]]
 hartreeFockIterants ats n = map snd $ iterate (hartreeFockStep 0.5 n (calculateIntegrals ats)) ([M.empty,M.empty],[])
 
 hartreeFockStep :: Rl -> Int -> Integrals -> ([Matrix Label],[Orbital]) -> ([Matrix Label],[Orbital])
@@ -118,11 +118,11 @@ overlaps xs = M.fromList $ flip map xs (second $ \x -> Linear (map (\(l,x') -> (
 orbitalOverlaps :: KnownNat n => Atoms n -> Matrix Label
 orbitalOverlaps = overlaps . concatMap (\(al,at) -> map (first (al,)) $ M.toList $ atomOrbitalsGlobal at) . M.toList
 
-calculateIntegrals :: KnownNat n => Atoms n -> Integrals
+calculateIntegrals :: UsableDimension n => Atoms n -> Integrals
 calculateIntegrals ats = (orbitalOverlaps ats, nuclearHamiltonian ats, fourElectronIntegrals ats)
 
 doInvert :: forall a. (Ord a) => Matrix a -> Matrix a
-doInvert = maybe (error "Singular matrix") id . invert
+doInvert m = maybe (error "Singular matrix") id $ invert m
 
 matTimes :: (HasCallStack, Ord a) => Matrix a -> Linear Cplx a -> Linear Cplx a
 matTimes m v = reduce $ (m M.!) =<< v
