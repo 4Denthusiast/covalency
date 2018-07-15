@@ -89,6 +89,12 @@ instance NamedDimensions 6 where
 erf :: Rl -> Rl
 erf x = sqrt $ (1-) $ exp $ -x^2 * (4/pi + a*x^2) / (1 + a*x^2)
     where a = 8*(pi-3) / (3*pi*(4-pi))
+--erf x = if x > 3 then 1 - exp(-x*x) / (sqrt pi * x) else sum (zipWith (\k a -> x*(-x*x)^k * a) [0..35] erfCoeffs)
+
+erfCoeffs :: [Rl]
+erfCoeffs = map (\k -> 2 / sqrt pi / (fac k * (2*k+1))) [0..]
+    where fac 0 = 1
+          fac n = n * fac (n-1)
 
 -- Change variables from x,y,... to d/dx,d/dy,... as applied to exp(-xs^2/c)
 hermitify :: forall n. KnownNat n => Rl -> Polynomial n Cplx -> Polynomial n Cplx
@@ -100,7 +106,7 @@ hermitify c = hermitify' 0
           herms :: Int -> [Int] -> Polynomial n Cplx
           herms d = (1/sqrt c ^ d *~) . product . zipWith (\i e -> P.evaluate [1/sqrt c *~ variable i] (hermitianPoly e)) [0..]
           trimDeg :: Int -> Polynomial n Cplx -> Polynomial n Cplx
-          trimDeg d = monomialSum (\es -> if sum es < d then monomial es else 0) -- Remove the tiny bits left over due to numerical error.
+          trimDeg d = monomialSum (\es -> if sum es <= d then monomial es else 0) -- Remove the tiny bits left over due to numerical error.
 
 hermitianPoly :: Int -> Polynomial 1 Rl
 hermitianPoly 0 = 1

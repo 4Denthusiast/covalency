@@ -10,6 +10,8 @@ module Eigen(
     negativeEigenvecsFrom,
     negativeEigenvecs,
     removeKernel,
+    eigenvecNear,
+    rayleighQuotient,
 ) where
 
 import Linear

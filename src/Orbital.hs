@@ -53,14 +53,14 @@ evalOrbital :: KnownNat n => Atoms n -> Linear Cplx Label -> Gaussians n
 evalOrbital as o = reduce $ o >>= (\(al,ol) -> atomOrbitalsGlobal (as M.! al) M.! ol)
 
 nuclearHamiltonian :: KnownNat n => Atoms n -> Matrix Label
-nuclearHamiltonian ats = traceShowMatId $ M.unions $ map atomH (M.toList ats)
+nuclearHamiltonian ats = M.unions $ map atomH (M.toList ats)
     where --atomH :: (AtomLabel, Atom n) -> Matrix Label
           atomH (al, at) = M.mapKeysMonotonic (al,) $ M.mapWithKey (\ol o -> orbH ol o al) (atomOrbitalsGlobal at)
           orbH ol o al = reduce $ approximate (overlapsH o)
           overlapsH o = Linear $ flip map allOrbs (swap . second (singleH o))
           singleH o o' = totalPotential (liftA2 multiply o o') - 0.5*flatten (liftA2 (dot . laplacian) o o')
           approximate o = trim $ reduce $ o >>= ((trim <$> doInvert (overlaps allOrbs)) M.!)
-          allOrbs = concatMap (\(al,at) -> map (first (al,)) $ M.toList $ atomOrbitalsGlobal at) (M.toList ats)
+          allOrbs = M.toList $ allOrbitals ats
           totalPotential o = sum $ map (flip atomPotentialGlobal o) (M.elems ats)
 
 -- this ! a ! b ! c = int(r) (r-r')^(2-d)|c⟩⟨a|δ(r)|b⟩
@@ -74,7 +74,7 @@ fourElectronIntegrals ats = strict $ tabulate allLabels (\a -> tabulate allLabel
           cache = flip fmap allOrbs (\a -> flip fmap allOrbs (\b -> flip fmap allOrbs (\c -> flip fmap allOrbs (fei a b c))))
           fei a b c d = coulumbPotential (convolve . reverseGauss <$> (multiply <$> a <*> b) <*> (multiply <$> c <*> d))
           allLabels = M.keys allOrbs
-          allOrbs = mconcat $ map (\(al,at) -> M.mapKeysMonotonic (al,) $ atomOrbitalsGlobal at) $ M.toList ats
+          allOrbs = allOrbitals ats
           approximate = trim . reduce . ((doInvert (overlaps (M.toList allOrbs)) M.!) =<<)
           traceCol a b c x = seq (x == x) $ trace ("col" ++ show a ++ show b ++ show c) x
           strict x = seq (x == x) x
@@ -116,10 +116,26 @@ overlaps :: (InnerProduct Cplx v, Ord a) => [(a,v)] -> Matrix a
 overlaps xs = M.fromList $ flip map xs (second $ \x -> Linear (map (\(l,x') -> (dot x x',l)) xs))
 
 orbitalOverlaps :: KnownNat n => Atoms n -> Matrix Label
-orbitalOverlaps = overlaps . concatMap (\(al,at) -> map (first (al,)) $ M.toList $ atomOrbitalsGlobal at) . M.toList
+orbitalOverlaps = overlaps . M.toList . allOrbitals
+
+allOrbitals :: KnownNat n => Atoms n -> Map Label (Gaussians n)
+allOrbitals = mconcat . map (\(al,at) -> M.mapKeysMonotonic (al,) $ atomOrbitalsGlobal at) . M.toList
 
 calculateIntegrals :: UsableDimension n => Atoms n -> Integrals
-calculateIntegrals ats = (orbitalOverlaps ats, nuclearHamiltonian ats, fourElectronIntegrals ats)
+calculateIntegrals ats = (orbitalOverlaps ats', nuclearHamiltonian ats', fourElectronIntegrals ats')
+    where ats' = trimOrbitals ats
+
+-- Remove superfluous orbitals which are almost the same as (linear combinations of) others
+trimOrbitals :: KnownNat n => Atoms n -> Atoms n
+trimOrbitals ats = M.mapWithKey trimAt ats
+    where trimAt al at = at{atomOrbitals = M.filterWithKey (\ol _ -> M.member (al,ol) trimmedOrbs) (atomOrbitals at)}
+          trimmedOrbs = trimOrbs $ orbitalOverlaps ats
+          trimOrbs ovs = let
+                  x = eigenvecNear ovs 0
+                  d = rayleighQuotient ovs x
+                  w = snd $ maximum $ first abs <$> (\(Linear a) -> a) x
+                  next = M.delete w $ (reduce . ((\l -> if l == w then mempty else return l) =<<)) <$> ovs
+              in if abs d > 2e-3 then ovs else trimOrbs next
 
 doInvert :: forall a. (Ord a) => Matrix a -> Matrix a
 doInvert m = maybe (error "Singular matrix") id $ invert m
@@ -173,3 +189,8 @@ showMatrix m = intercalate "\n" $ zipWith (++) xsl $ map (intercalate ", ") $ tr
 
 traceShowMatId :: (Show a, Ord a) => Matrix a -> Matrix a
 traceShowMatId m = trace (showMatrix m) m
+
+debugPotential :: UsableDimension n => Atoms n -> Matrix Label
+debugPotential ats = (Linear . map swap . M.toList . flip fmap orbs . (p .) . liftA2 multiply) <$> orbs
+    where orbs = allOrbitals ats
+          p gs = sum $ flip atomPotentialGlobal gs <$> M.elems ats
