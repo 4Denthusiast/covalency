@@ -23,12 +23,11 @@ import Control.Applicative
 import Control.Monad
 import Data.Monoid
 import Data.Bifunctor
-import Data.Complex
 import System.Posix.Files
 import GHC.TypeLits
 import Debug.Trace
 
-type BasisSet = [(L,Linear Cplx Rl)]
+type BasisSet = [(L,Linear Rl Rl)]
 
 minimalBasisSet :: forall n. UsableDimension n => Int -> BasisSet
 minimalBasisSet = minimalBasisSetFrom @n (-1) 1 1
@@ -48,29 +47,29 @@ minimalBasisSetFrom inner outer l0 z = if insufficientBounds then expanded else 
 testAtom :: forall n. UsableDimension n => Int -> Int -> L -> Int -> Atom n
 testAtom inner outer l0 z = changeZ z $ Atom {
         atomPos = genericReplicate (natVal @n Proxy) 0,
-        atomOrbitals = (M.fromList $ liftA2 (\i (l,m,p) -> ((i,l,m),normalize @Cplx $ return $ centralGaussian (expSize i) p)) [inner..outer] (concatMap (\l -> zipWith (l,,) [0..] $ P.sphericalHarmonicPolys l) [0..l0]))
+        atomOrbitals = (M.fromList $ liftA2 (\i (l,m,p) -> ((i,l,m),normalize @Rl $ return $ centralGaussian (expSize i) p)) [inner..outer] (concatMap (\l -> zipWith (l,,) [0..] $ P.sphericalHarmonicPolys l) [0..l0]))
     }
 
 expSize :: Floating a => Int -> a
 expSize = (exp . (1.5*) . fromIntegral)
 
-minimalBasisOf :: forall n. UsableDimension n => Atom n -> [(L,Linear Cplx Int)]
+minimalBasisOf :: forall n. UsableDimension n => Atom n -> [(L,Linear Rl Int)]
 minimalBasisOf at = fmap (fmap trimBasisEl) $ basisConverged $ map snd $ iterate (stepBasis @n z ints) (M.empty, [])
     where ints = calculateIntegrals $ M.singleton "" at
           trimBasisEl (Linear xs) = Linear $ filter ((>1e-2) . abs . fst) xs
           z = atomicNumber at
 
-basisConverged :: [[(L,Linear Cplx Int)]] -> [(L,Linear Cplx Int)]
+basisConverged :: [[(L,Linear Rl Int)]] -> [(L,Linear Rl Int)]
 basisConverged (x:x':xs) = if similar x x' then x' else basisConverged (x':xs)
     where similar (y:ys) (y':ys') = elSimilar y y' && similar ys ys'
           similar [] [] = True
           similar _ _ = False
-          elSimilar (l,b) (l',b') = l == l' && norm (b <> (-1::Cplx) *~ b') < 1e-10
-          norm :: Linear Cplx Int -> Cplx
+          elSimilar (l,b) (l',b') = l == l' && norm (b <> (-1::Rl) *~ b') < 1e-10
+          norm :: Linear Rl Int -> Rl
           norm b = dot b b
 
 -- Iterate the basis towards convergence, taking the occupancy to smoothly drop to 0 wrt energy.
-stepBasis :: forall n. KnownNat n => Int -> Integrals -> (Matrix Label,[(L,Linear Cplx Int)]) -> (Matrix Label,[(L,Linear Cplx Int)])
+stepBasis :: forall n. KnownNat n => Int -> Integrals -> (Matrix Label,[(L,Linear Rl Int)]) -> (Matrix Label,[(L,Linear Rl Int)])
 stepBasis z (ov,nh,fei) (peeh,b) = (eeh,b')
     where h = addMat nh peeh
           -- Split a matrix representing a spherically-symmetric operator into components wrt L.
@@ -81,7 +80,7 @@ stepBasis z (ov,nh,fei) (peeh,b) = (eeh,b')
               unfoldr (\(m,l) -> guard (not (M.null m)) >> (Just $ (,l+1) <$> M.partitionWithKey (\(_,(_,l',0)) _ -> l' == l) m)) .
               (,0) . M.filterWithKey (\(_,(_,_,m)) _ -> m == 0)
           getN (_,(n,_,_)) = n
-          orbss = zipWith (\h' ov' -> map (\(e,o) -> (realPart e, normalizeWith ov' o)) (negativeEigenvecs h')) (splitMat h) (splitMat ov)
+          orbss = zipWith (\h' ov' -> map (fmap $ normalizeWith ov') (negativeEigenvecs h')) (splitMat h) (splitMat ov)
           orbs = foldr merge [] $ zipWith (\l os -> map (fmap (l,)) os) [0..] orbss
           thisMultiplicity :: Num a => L -> a
           thisMultiplicity = multiplicity (natVal @n Proxy)
@@ -95,7 +94,7 @@ stepBasis z (ov,nh,fei) (peeh,b) = (eeh,b')
           weight e = if isNothing eInit then const 1 else exp . negate . (^4) . (e/)
           tOrbs = if isNothing eInit then orbs else takeWhile ((<0.6*e0) . fst) orbs
           neeh = foldr addMat M.empty $ map (\(e,(l,o)) -> weight e0 e *~ head (eeHamiltonian fei (map (\m -> (Nothing,("",) <$> (,l,m) <$> o)) [0..thisMultiplicity l - 1]))) tOrbs
-          eeh = addMat ((0.6::Cplx) *~ peeh) ((0.4::Cplx) *~ neeh)
+          eeh = addMat ((0.6::Rl) *~ peeh) ((0.4::Rl) *~ neeh)
           b' = map snd tOrbs
 
 -- Explicitly memoise because this is used lots.
@@ -121,7 +120,7 @@ basisify at = loadAtomWithBasis (atomPos at) (atomicNumber at)
 atomWithBasis :: UsableDimension n => [Rl] -> Int -> BasisSet -> Atom n
 atomWithBasis xs z basis = changeZ z $ Atom{
         atomPos = xs,
-        atomOrbitals = fmap (normalize @Cplx) $ M.fromList $ concat $ zipWith (\(l,cs) n -> zipWith (\p m -> ((n,l,m),flip centralGaussian p <$> cs)) (P.sphericalHarmonicPolys l) [0..]) basis [0..]
+        atomOrbitals = fmap (normalize @Rl) $ M.fromList $ concat $ zipWith (\(l,cs) n -> zipWith (\p m -> ((n,l,m),flip centralGaussian p <$> cs)) (P.sphericalHarmonicPolys l) [0..]) basis [0..]
     }
 
 loadBasis :: forall n. UsableDimension n => Int -> IO BasisSet

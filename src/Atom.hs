@@ -24,7 +24,6 @@ import Gaussian
 import Potential
 import {-# SOURCE #-} Orbital
 
-import Data.Complex
 import qualified Data.Map as M
 import Control.Applicative
 import GHC.TypeLits
@@ -47,7 +46,7 @@ type Atoms (n::Nat) = M.Map AtomLabel (Atom n)
 newAtom :: forall n. UsableDimension n => Int -> [Rl] -> Atom n
 newAtom z xs = changeZ z $ Atom {
         atomPos = xs,
-        atomOrbitals = (M.fromList $ liftA2 (\i (l,m,p) -> ((i,l,m),normalize @Cplx $ return $ centralGaussian (e i) p)) [-4..4] (concatMap (\l -> zipWith (l,,) [0..] $ P.sphericalHarmonicPolys l) [0,1]))
+        atomOrbitals = (M.fromList $ liftA2 (\i (l,m,p) -> ((i,l,m),normalize @Rl $ return $ centralGaussian (e i) p)) [-4..4] (concatMap (\l -> zipWith (l,,) [0..] $ P.sphericalHarmonicPolys l) [0,1]))
     }
     where e :: Floating a => Int -> a
           e = (exp . (1.5*) . fromIntegral)
@@ -61,5 +60,5 @@ changeZ z at = at{
 atomOrbitalsGlobal :: KnownNat n => Atom n -> M.Map OrbitalLabel (Gaussians n)
 atomOrbitalsGlobal at = (shiftGauss (atomPos at) <$>) <$> (atomOrbitals at)
 
-atomPotentialGlobal :: KnownNat n => Atom n -> Gaussians n -> Cplx
+atomPotentialGlobal :: KnownNat n => Atom n -> Gaussians n -> Rl
 atomPotentialGlobal at = atomPotential at . (shiftGauss (negate <$> atomPos at) <$>)

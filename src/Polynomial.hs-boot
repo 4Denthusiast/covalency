@@ -25,7 +25,6 @@ module Polynomial(
 import Linear
 
 import Data.List
-import Data.Complex
 import Data.Monoid hiding ((<>))
 import Data.Semigroup
 import GHC.TypeLits --(natVal, Nat, KnownNat)
@@ -62,9 +61,7 @@ evaluate' :: (Monoid b, Num a, Vector a b) => [a] -> Polynomial n b -> b
 
 laplacian :: (KnownNat n, Eq a, Num a) => Polynomial n a -> Polynomial n a
 
-sphericalHarmonicPolys :: (KnownNat n) => Int -> [Polynomial n Cplx]
-
-instance Semilinear a => Semilinear (Polynomial n a)
+sphericalHarmonicPolys :: (KnownNat n) => Int -> [Polynomial n Rl]
 
 class NamedDimensions (n :: Nat) where
     dimName :: forall proxy. proxy n -> Int -> String

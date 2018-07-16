@@ -35,7 +35,6 @@ import Data.Map (Map)
 import Data.Maybe
 import Data.List
 import Data.Function
-import Data.Complex
 import Data.Bifunctor
 import Data.Monoid
 import Control.Applicative
@@ -44,12 +43,12 @@ import Debug.Trace
 import GHC.Stack
 
 type Label = (AtomLabel, OrbitalLabel)
-type Orbital = (Maybe Spin, Linear Cplx Label)
-type Matrix a = Map a (Linear Cplx a)
+type Orbital = (Maybe Spin, Linear Rl Label)
+type Matrix a = Map a (Linear Rl a)
 -- Integrals = (overlaps, nuclear hamiltonian, four-electron integrals)
 type Integrals = (Matrix Label, Matrix Label, Map Label (Map Label (Matrix Label)))
 
-evalOrbital :: KnownNat n => Atoms n -> Linear Cplx Label -> Gaussians n
+evalOrbital :: KnownNat n => Atoms n -> Linear Rl Label -> Gaussians n
 evalOrbital as o = reduce $ o >>= (\(al,ol) -> atomOrbitalsGlobal (as M.! al) M.! ol)
 
 nuclearHamiltonian :: KnownNat n => Atoms n -> Matrix Label
@@ -66,7 +65,7 @@ nuclearHamiltonian ats = M.unions $ map atomH (M.toList ats)
 -- this ! a ! b ! c = int(r) (r-r')^(2-d)|c⟩⟨a|δ(r)|b⟩
 fourElectronIntegrals :: UsableDimension n => Atoms n -> Map Label (Map Label (Matrix Label))
 fourElectronIntegrals ats = strict $ tabulate allLabels (\a -> tabulate allLabels (\b -> tabulate allLabels (col a b)))
-    where col :: Label -> Label -> Label -> Linear Cplx Label
+    where col :: Label -> Label -> Label -> Linear Rl Label
           col a b c = traceCol a b c $ approximate $ mapToLinear $ tabulate allLabels (getFei a b c)
           getFei a b c d = let (a',b',c',d') = semisort (a,b,c,d) in cache M.! a' M.! b' M.! c' M.! d'
           semisort = (\(a,b,c,d) -> if a > c then (c,d,a,b) else (a,b,c,d)) . (\(a,b,c,d) -> (min a b, max a b, min c d, max c d))
@@ -103,7 +102,7 @@ hartreeFockStep s n (overlaps,nh,fei) (peeh,orbs) = (eeh, map snd $ take n $ fol
 -- Doesn't work with orbitals that don't have a spin.
 totalEnergy :: forall n. KnownNat n => Atoms n -> Integrals -> [Orbital] -> Rl
 totalEnergy ats (overlaps, nh, fei) orbs = sum (map orbEnergy orbs) + atomEnergy
-    where orbEnergy (s,o) = realPart $ matTimes overlaps o `dot` (matTimes nh o <> (0.5::Rl) *~ matTimes (getEeh s) o) / matTimes overlaps o `dot` o
+    where orbEnergy (s,o) = matTimes overlaps o `dot` (matTimes nh o <> (0.5::Rl) *~ matTimes (getEeh s) o) / matTimes overlaps o `dot` o
           getEeh (Just s) = eeh !! fromEnum s
           eeh = eeHamiltonian fei $ map (fmap (normalizeWith overlaps)) orbs
           atomEnergy = sum $ map (uncurry atomLabelPairEnergy) $ filter (uncurry (>)) $ (,) <$> atList <*> atList
@@ -112,7 +111,7 @@ totalEnergy ats (overlaps, nh, fei) orbs = sum (map orbEnergy orbs) + atomEnergy
           atomPairEnergy x y = fromIntegral (atomicNumber x * atomicNumber y) * dist x y ^^ (2 - (natVal @n) Proxy)
           dist x y = sqrt (norm2 (zipWith (-) (atomPos x) (atomPos y)))
 
-overlaps :: (InnerProduct Cplx v, Ord a) => [(a,v)] -> Matrix a
+overlaps :: (InnerProduct Rl v, Ord a) => [(a,v)] -> Matrix a
 overlaps xs = M.fromList $ flip map xs (second $ \x -> Linear (map (\(l,x') -> (dot x x',l)) xs))
 
 orbitalOverlaps :: KnownNat n => Atoms n -> Matrix Label
@@ -140,11 +139,11 @@ trimOrbitals ats = M.mapWithKey trimAt ats
 doInvert :: forall a. (Ord a) => Matrix a -> Matrix a
 doInvert m = maybe (error "Singular matrix") id $ invert m
 
-matTimes :: (HasCallStack, Ord a) => Matrix a -> Linear Cplx a -> Linear Cplx a
+matTimes :: (HasCallStack, Ord a) => Matrix a -> Linear Rl a -> Linear Rl a
 matTimes m v = reduce $ (m M.!) =<< v
 
-normalizeWith :: (InnerProduct Cplx a, Ord a) => Matrix a -> Linear Cplx a -> Linear Cplx a
-normalizeWith m o = (1/sqrt (dot o (matTimes m o))::Cplx) *~ o
+normalizeWith :: (InnerProduct Rl a, Ord a) => Matrix a -> Linear Rl a -> Linear Rl a
+normalizeWith m o = (1/sqrt (dot o (matTimes m o))::Rl) *~ o
 
 invert :: forall a. (Ord a) => Matrix a -> Maybe (Matrix a)
 invert m0 = invert' m0 m0' xs0
@@ -155,9 +154,9 @@ invert m0 = invert' m0 m0' xs0
           invert' m m' (x:xs) =
               let v = m M.! x
                   (Linear vl) = v
-                  (a, y) = maximumBy (on compare (magnitude . fst)) $ dropWhile ((<x).snd) vl ++ [(0,error "singular matrix")]
+                  (a, y) = maximumBy (on compare (abs . fst)) $ dropWhile ((<x).snd) vl ++ [(0,error "singular matrix")]
                   f z = if z == x then y else if z == y then x else z
-                  k :: a -> Linear Cplx a
+                  k :: a -> Linear Rl a
                   k z = if x /= z then return z else (1+1/a) *~ return x <> (-(1/a)) *~ (f <$> v)
                   k' = reduce . (>>= k) . fmap f
               in if a == 0 then Nothing else invert' (k' <$> m) (k' <$> m') xs
@@ -176,7 +175,7 @@ addMat :: Ord a => Matrix a -> Matrix a -> Matrix a
 addMat = M.unionWith (\a b -> reduce (a <> b))
 
 showMatrix :: (Show a, Ord a) => Matrix a -> String
-showMatrix m = intercalate "\n" $ zipWith (++) xsl $ map (intercalate ", ") $ transpose $ map registerColumn $ zipWith ((:) . show) xs $ map (map (show . realPart)) cs
+showMatrix m = intercalate "\n" $ zipWith (++) xsl $ map (intercalate ", ") $ transpose $ map registerColumn $ zipWith ((:) . show) xs $ map (map show) cs
     where xs = M.keys m
           cs = map (linearToList xs . reduce) $ M.elems m
           linearToList [] (Linear []) = []

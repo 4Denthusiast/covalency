@@ -25,7 +25,6 @@ import Orbital
 import Eigen
 
 import Data.List
-import Data.Complex
 import Data.Monoid hiding ((<>))
 import Data.Semigroup
 import GHC.TypeLits --(natVal, Nat, KnownNat)
@@ -96,24 +95,15 @@ laplacian :: (KnownNat n, Eq a, Num a) => Polynomial n a -> Polynomial n a
 laplacian (Polynomial ms) = sum $ map monLap ms
     where monLap (Monomial a es) = Polynomial $ zipWith3 (\h t e -> Monomial (a*fromIntegral (e*(e-1))) (h++(e-2):t)) (inits es) (tail $ tails es) es
 
-sphericalHarmonicPolys :: forall n. KnownNat n => Int -> [Polynomial n Cplx]
+sphericalHarmonicPolys :: forall n. KnownNat n => Int -> [Polynomial n Rl]
 sphericalHarmonicPolys = map toPoly . fst . removeKernel . flip tabulate linearLaplacian . allMons (fromIntegral $ natVal @n Proxy)
     where toPoly = flatten . fmap (Polynomial . (:[]) . Monomial 1)
           allMons n l = filter ((==l) . sum) $ sequence $ replicate n [0..l]
-          linearLaplacian :: [Int] -> Linear Cplx [Int]
+          linearLaplacian :: [Int] -> Linear Rl [Int]
           linearLaplacian m = mconcat $ zipWith (\h (e:t) -> if e < 2 then mempty else (e*(e-1))*~return (shift$h++(e-2):t)) (inits m) (init $ tails m)
           shift (x:xs) = x+2 : xs
 
-instance InnerProduct Cplx [Int] where dot a b = if a == b then 1 else 0
-
-
-assumePolyReal :: (Eq a, Num a) => Polynomial n (Complex a) -> Polynomial n a
-assumePolyReal (Polynomial ms) = Polynomial $ map (fmap assumeReal) ms
-    where assumeReal (x :+ 0) = x
-          assumeReal _        = error "Real number required."
-
-instance Semilinear a => Semilinear (Polynomial n a) where
-    conj (Polynomial ms) = Polynomial $ map (fmap conj) ms
+instance InnerProduct Rl [Int] where dot a b = if a == b then 1 else 0
 
 
 class NamedDimensions (n :: Nat) where

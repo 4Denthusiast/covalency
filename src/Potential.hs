@@ -16,12 +16,11 @@ import Linear
 import Gaussian
 import {-#SOURCE#-} Polynomial as P
 
-import Data.Complex
 import GHC.TypeLits
 import Debug.Trace
 
 -- a distribution
-type Potential (n::Nat) = Gaussians n -> Cplx
+type Potential (n::Nat) = Gaussians n -> Rl
 
 -- The range of scales over which this function may have a significant value and variation.
 sizeRange :: Gaussians n -> (Rl, Rl)
@@ -39,7 +38,7 @@ coulumbFunction (l', h') = Linear (map ((1,).g) [0..k])
           l = l'*l' / 2
           h = h'*h' * coulumbApproximationThreshold @n
           k = ceiling $ log (h/l)
-          g i = let x = l * exp (fromIntegral i) in centralSphereGaussian (1/(1/x - 1/(l*exp(fromIntegral k+0.5)))) ((c i * s x) :+ 0)
+          g i = let x = l * exp (fromIntegral i) in centralSphereGaussian (1/(1/x - 1/(l*exp(fromIntegral k+0.5)))) (c i * s x)
           s :: Rl -> Rl
           s x = if even d then x ^^ d' / fac (-1-fromIntegral d') else x ^^ d' * sqrt x / fac (-1.5-fromIntegral d')
           c i = if i == 0 then 1 / (1 - exp (-1)) else 1 -- Correction to give the region around 0 the correct integral, even if it has the wrong shape.
@@ -52,7 +51,7 @@ defaultCoulumbPotential gs = if central then flatten (centralCoulumb <$> gs) els
     where (Linear gsl) = gs
           central = all ((\(Gaussian xs _ _) -> all (==0) xs) . snd) gsl
 
-centralCoulumb :: KnownNat n => Gaussian n -> Cplx
+centralCoulumb :: KnownNat n => Gaussian n -> Rl
 centralCoulumb (Gaussian _ c a) = monomialSum' (\m -> if any odd m then 0 else sphereIntegral m * radialIntegral c (sum m)) a
     where sphereIntegral m = 2* product (map (gammaHalf . (1+)) m) / gammaHalf (sum (map (1+) m))
           gammaHalf 1 = sqrt pi
@@ -63,7 +62,7 @@ centralCoulumb (Gaussian _ c a) = monomialSum' (\m -> if any odd m then 0 else s
 {- The value for (Gaussian p c 1) is exactly (pi c)^3/2 erf(|p|/c)/|p|. Values for higher L are computed
    by expressing the gaussian by derivatives of the basic gaussian, and taking the corresponding derivatives
    of the potential function. -}
-coulumb3 :: Gaussian 3 -> Cplx
+coulumb3 :: Gaussian 3 -> Rl
 coulumb3 g@(Gaussian xs c a) = if norm2 xs < c*4e-6 then centralCoulumb g else monomialSum' (P.evaluate xs' . derivatives) a'
     where a' = hermitify c a
           xs' = [1/xsl, exp (- xsl*xsl / c), erf (xsl/sqrt c)] ++ xs --Add auxilliary variables for convenient manipulation.
@@ -97,15 +96,15 @@ erfCoeffs = map (\k -> 2 / sqrt pi / (fac k * (2*k+1))) [0..]
           fac n = n * fac (n-1)
 
 -- Change variables from x,y,... to d/dx,d/dy,... as applied to exp(-xs^2/c)
-hermitify :: forall n. KnownNat n => Rl -> Polynomial n Cplx -> Polynomial n Cplx
+hermitify :: forall n. KnownNat n => Rl -> Polynomial n Rl -> Polynomial n Rl
 hermitify c = hermitify' 0
     where hermitify' xs' 0 = xs'
           hermitify' xs' xs = let (dxs',dxs) = lead xs in hermitify' (xs' + dxs') (trimDeg (degree xs-1) $ xs - dxs)
-          lead :: Polynomial n Cplx -> (Polynomial n Cplx, Polynomial n Cplx)
+          lead :: Polynomial n Rl -> (Polynomial n Rl, Polynomial n Rl)
           lead xs = (c/2)^degree xs *~ monomialSum (\es -> if sum es == degree xs then (monomial es, herms (degree xs) es) else (0,0)) xs
-          herms :: Int -> [Int] -> Polynomial n Cplx
+          herms :: Int -> [Int] -> Polynomial n Rl
           herms d = (1/sqrt c ^ d *~) . product . zipWith (\i e -> P.evaluate [1/sqrt c *~ variable i] (hermitianPoly e)) [0..]
-          trimDeg :: Int -> Polynomial n Cplx -> Polynomial n Cplx
+          trimDeg :: Int -> Polynomial n Rl -> Polynomial n Rl
           trimDeg d = monomialSum (\es -> if sum es <= d then monomial es else 0) -- Remove the tiny bits left over due to numerical error.
 
 hermitianPoly :: Int -> Polynomial 1 Rl

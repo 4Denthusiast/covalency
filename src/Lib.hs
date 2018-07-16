@@ -22,7 +22,6 @@ import Graphics.Gloss.Interface.IO.Interact
 
 import qualified Data.Map as M
 import Data.Monoid
-import Data.Complex
 import Data.Char
 import GHC.TypeLits (KnownNat)
 import Debug.Trace
@@ -115,6 +114,7 @@ handleEvent event w = case inputState w of
         (EventKey (Char '\b') Down _ _) -> pure $ w{inputState = Typing (if null s then s else init s)}
         (EventKey (Char c) Down _ _) -> pure $ w{inputState = Typing (s++[c])}
         (EventKey (SpecialKey KeyEnter) Down _ _) -> pure $ w{inputState = Editing s}
+        (EventKey (MouseButton LeftButton) Down _ p) -> pure $ rr w{worldAtoms = M.alter (Just . maybe (newAtom 1 (pos p)) (\a -> a{atomPos = pos p})) s atoms}
         _ -> both s
     (Editing s) -> case event of
         (EventKey (SpecialKey KeyEnter) Down _ _) -> pure $ w{inputState = Typing s}
@@ -143,7 +143,6 @@ handleEvent event w = case inputState w of
           d     = 3 --TODO explicitly link this to the dimension of the atoms.
           pos (x,y) = [num $ x/viewScale, num $ y/viewScale, 0]
           both s = case event of
-              (EventKey (MouseButton LeftButton) Down _ p) -> pure $ rr w{worldAtoms = M.alter (Just . maybe (newAtom 1 (pos p)) (\a -> a{atomPos = pos p})) s atoms}
               (EventKey (MouseButton WheelDown) Down _ _) -> pure $ rr w{worldViewScale = viewScale / 2, worldValScale = valScale * (2 ** (d/2))}
               (EventKey (MouseButton WheelUp  ) Down _ _) -> pure $ rr w{worldViewScale = viewScale * 2, worldValScale = valScale / (2 ** (d/2))} 
               _ -> pure $ w
