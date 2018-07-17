@@ -132,7 +132,7 @@ handleEvent event w = case inputState w of
             Down -> w{worldCharge = worldCharge w - 1}
             Up   -> w{worldAtoms = M.adjust (\a -> changeZ (max 1 $ atomicNumber a - 1) a) s atoms}
         (EventKey (Char 'e') Down _ _) -> putStrLn ("Energy: "++show (worldEnergy w)) >> pure w
-        (EventKey (Char 'c') Down _ _) -> (\a -> w{worldAtoms = M.insert s a atoms}) <$> basisify (atoms M.! s)
+        (EventKey (Char 'c') Down _ _) -> (\a -> rr w{worldAtoms = M.insert s a atoms}) <$> basisify (atoms M.! s)
         _ -> both s
     where atoms = worldAtoms w
           orbs  = worldOrbitals w
@@ -158,7 +158,7 @@ shiftRight (x:xs,xs') = (xs,x:xs')
 shiftRight (  [], []) = ([],[])
 
 hydrogenLikeOrbs :: Integrals -> [Orbital]
-hydrogenLikeOrbs (_,h,_) = map ((Nothing,) . snd) $ negativeEigenvecs h
+hydrogenLikeOrbs (ov,h,_) = map ((Nothing,) . normalizeWith ov . snd) $ negativeEigenvecs h
 
 hfStepWorld :: Rl -> World -> World
 hfStepWorld s w = w{worldOrbitals = (orbs',[]), worldPrevEEHamiltonian = peeh'}

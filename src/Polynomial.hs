@@ -96,7 +96,7 @@ laplacian (Polynomial ms) = sum $ map monLap ms
     where monLap (Monomial a es) = Polynomial $ zipWith3 (\h t e -> Monomial (a*fromIntegral (e*(e-1))) (h++(e-2):t)) (inits es) (tail $ tails es) es
 
 sphericalHarmonicPolys :: forall n. KnownNat n => Int -> [Polynomial n Rl]
-sphericalHarmonicPolys = map toPoly . fst . removeKernel . flip tabulate linearLaplacian . allMons (fromIntegral $ natVal @n Proxy)
+sphericalHarmonicPolys = map (negate . toPoly) . fst . removeKernel . flip tabulate linearLaplacian . allMons (fromIntegral $ natVal @n Proxy)
     where toPoly = flatten . fmap (Polynomial . (:[]) . Monomial 1)
           allMons n l = filter ((==l) . sum) $ sequence $ replicate n [0..l]
           linearLaplacian :: [Int] -> Linear Rl [Int]

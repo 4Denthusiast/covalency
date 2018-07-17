@@ -23,7 +23,7 @@ bitmapFormat :: BitmapFormat
 bitmapFormat = BitmapFormat BottomToTop PxRGBA
 
 bitmapOfOrbital :: KnownNat n => Int -> Int -> Rl -> Rl -> Linear Rl Label -> Atoms n -> Picture
-bitmapOfOrbital x y scale vScale orbital atoms = bitmapOfByteString x y bitmapFormat (BS.toStrict $ bytestringOfOrbital x y scale vScale (normalize @Rl $ evalOrbital atoms orbital)) True
+bitmapOfOrbital x y scale vScale orbital atoms = bitmapOfByteString x y bitmapFormat (BS.toStrict $ bytestringOfOrbital x y scale vScale (evalOrbital atoms orbital)) True
 
 bytestringOfOrbital :: forall n. KnownNat n => Int -> Int -> Rl -> Rl -> Gaussians n -> BS.ByteString
 bytestringOfOrbital x0 y0 scale vScale orb = toLazyByteString rows
@@ -33,7 +33,7 @@ bytestringOfOrbital x0 y0 scale vScale orb = toLazyByteString rows
           colour z = mconcat $ (map (word8 . floor . (*255)) (colourCode (vScale * z))) ++ [word8 255]
 
 colourCode :: Rl -> [Rl]
-colourCode z = map ((1-).(ri*).(1-).(r0*) . (\c -> if c then 0 else 1) . (==(z>0))) [True,False,False]
+colourCode z = map ((1-).(ri*).(1-).(r0*) . (\c -> if c then 1 else 0) . (==(z>0))) [True,False,False]
     where r         = abs z
           clamp     = max 0 . min 1
           softClamp = (1-) . (/4) . (^2) . (2-) . max 0 . min 2

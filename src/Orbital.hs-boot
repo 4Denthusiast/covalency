@@ -2,9 +2,11 @@
 module Orbital(
     Matrix,
     matTimes,
+    addMat,
     invert,
     doInvert,
     tabulate,
+    showMatrix,
 ) where
 
 import Linear
@@ -23,6 +25,8 @@ overlaps :: (InnerProduct Rl v, Ord a) => [(a,v)] -> Matrix a
 
 matTimes :: (HasCallStack, Ord a) => Matrix a -> Linear Rl a -> Linear Rl a
 
+addMat :: Ord a => Matrix a -> Matrix a -> Matrix a
+
 invert :: (Ord a) => Matrix a -> Maybe (Matrix a)
 
 doInvert :: (Ord a) => Matrix a -> Matrix a
@@ -30,3 +34,5 @@ doInvert :: (Ord a) => Matrix a -> Matrix a
 tabulate :: (Ord k) => [k] -> (k -> a) -> M.Map k a
 
 swap :: (x,y) -> (y,x)
+
+showMatrix :: (Show a, Ord a) => Matrix a -> String

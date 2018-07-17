@@ -21,6 +21,7 @@ module Orbital(
     doInvert,
     tabulate,
     showMatrix,
+    traceShowMatId,
 ) where
 
 import Util
@@ -94,9 +95,8 @@ hartreeFockIterants :: UsableDimension n => Atoms n -> Int -> [[Orbital]]
 hartreeFockIterants ats n = map snd $ iterate (hartreeFockStep 0.5 n (calculateIntegrals ats)) ([M.empty,M.empty],[])
 
 hartreeFockStep :: Rl -> Int -> Integrals -> ([Matrix Label],[Orbital]) -> ([Matrix Label],[Orbital])
-hartreeFockStep s n (overlaps,nh,fei) (peeh,orbs) = (eeh, map snd $ take n $ foldr1 merge newOrbs)
-    where orbs' = map (fmap (normalizeWith overlaps)) orbs
-          eeh = zipWith (\a b -> addMat ((1-s) *~ a) $ (s *~ b)) peeh (eeHamiltonian fei orbs')
+hartreeFockStep s n (overlaps,nh,fei) (peeh,orbs) = (eeh, map (fmap (normalizeWith overlaps) . snd) $ take n $ foldr1 merge newOrbs)
+    where eeh = zipWith (\a b -> addMat ((1-s) *~ a) $ (s *~ b)) peeh (eeHamiltonian fei orbs)
           newOrbs = zipWith (\h s -> map (fmap (Just s,)) $ negativeEigenvecs $ addMat nh h) eeh [Up,Down]
 
 -- Doesn't work with orbitals that don't have a spin.
@@ -143,7 +143,8 @@ matTimes :: (HasCallStack, Ord a) => Matrix a -> Linear Rl a -> Linear Rl a
 matTimes m v = reduce $ (m M.!) =<< v
 
 normalizeWith :: (InnerProduct Rl a, Ord a) => Matrix a -> Linear Rl a -> Linear Rl a
-normalizeWith m o = (1/sqrt (dot o (matTimes m o))::Rl) *~ o
+normalizeWith m o = positiveMultiple $ (1/sqrt (dot o (matTimes m o))::Rl) *~ o
+    where positiveMultiple o' = if flatten (const (1::Rl) <$> o') < 0 then (-1::Rl) *~ o' else o'
 
 invert :: forall a. (Ord a) => Matrix a -> Maybe (Matrix a)
 invert m0 = invert' m0 m0' xs0

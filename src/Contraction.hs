@@ -36,13 +36,15 @@ minimalBasisSetFrom :: forall n. UsableDimension n => Int -> Int -> L -> Int -> 
 minimalBasisSetFrom inner outer l0 z = if insufficientBounds then expanded else b'
     where insufficientBounds = inner' < inner || outer' > outer || l0' > l0
           expanded = minimalBasisSetFrom @n inner' outer' l0' z 
-          b' = fmap (fmap (fmap expSize)) b
           inner' = minimum ns - 1
           outer' = maximum ns + 1
-          l0' = maximum (map fst b) + 1
+          l0m = maximum (map fst b)
+          l0' = if length (filter ((==l0m).fst) b) > 1 then l0m + 1 else l0m
           ns = foldr union [] $ map (linEls . snd) b
           linEls (Linear xs) = map snd xs
-          b = minimalBasisOf (testAtom @n inner outer l0 z)
+          at = testAtom @n inner outer l0 z
+          b = minimalBasisOf at
+          b' = map (\(l,o) -> (l,(\(Gaussian _ c _) -> c) <$> ((atomOrbitals at M.!) =<< (,l,0) <$> o))) b
 
 testAtom :: forall n. UsableDimension n => Int -> Int -> L -> Int -> Atom n
 testAtom inner outer l0 z = changeZ z $ Atom {
