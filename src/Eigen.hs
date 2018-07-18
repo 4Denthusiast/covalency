@@ -36,10 +36,6 @@ idMat = M.fromList . map (\x -> (x,return x))
 rayleighQuotient :: (InnerProduct Rl a, Ord a) => Matrix a -> Linear Rl a -> Rl
 rayleighQuotient m v = dot v (matTimes m v) / dot v v
 
--- A vector in the v. space on which the matrix acts. This is somewhat less likely to be a member of a proper invariant subspace than simply taking one element, though it still isn't guaranteed.
-arbitrary :: Ord a => Matrix a -> Linear Rl a
-arbitrary = reduce . foldr (<>) mempty
-
 -- Can't exclude linear combinations of eigenvectors with almost-equal values.
 eigenvectorQuality :: (InnerProduct Rl a, Ord a) => Matrix a -> Linear Rl a -> Rl
 eigenvectorQuality m v0 = norm (v' <> (-dot v v' ::Rl) *~ v)
@@ -75,7 +71,7 @@ slowRayleighIterate m μ v = case offsetInverse m μ of
         if min 1e-12 (eigenvectorQuality m v') >= eigenvectorQuality m v then v else slowRayleighIterate m (0.7*μ+0.3*rayleighQuotient m v) v'
 
 eigenvecNear :: (InnerProduct Rl a, Ord a, Show a) => Matrix a -> Rl -> Linear Rl a
-eigenvecNear m μ0 = slowRayleighIterate m μ0 $ fromJust $ find ((<0.1).eigenvectorQuality m) $ drop 20 $ inverseIterants m μ0 $ arbitrary m
+eigenvecNear m μ0 = slowRayleighIterate m μ0 $ fromJust $ find ((<0.1).eigenvectorQuality m) $ snd $ minimumBy (on compare fst) $ (\(v:vs) -> (abs (μ0-rayleighQuotient m v),v:vs)) <$> drop 20 <$> inverseIterants m μ0 <$> return <$> M.keys m
 
 negativeEigenvecs :: (InnerProduct Rl a, Ord a, Show a) => Matrix a -> [(Rl,Linear Rl a)]
 negativeEigenvecs m = negativeEigenvecsFrom m b
@@ -83,8 +79,8 @@ negativeEigenvecs m = negativeEigenvecsFrom m b
 
 -- Sometimes misses eigenvectors due to (presumably) numerical instability.
 negativeEigenvecsFrom :: (InnerProduct Rl a, Ord a, Show a) => Matrix a -> Rl -> [(Rl,Linear Rl a)]
-negativeEigenvecsFrom m b = map traceQuality $ concatMap (\μ -> map (μ,) $ fst $ removeKernel $ offsetMat m $ eigenvalNear m μ) $ takeWhile (<0) $ eigenvalsFrom m b
-    where traceQuality (μ,v) = trace ("quality: " ++ show (eigenvectorQuality m v)) (μ,v)
+negativeEigenvecsFrom m b = concatMap (\μ -> map (μ,) $ fst $ removeKernel $ offsetMat m $ traceDiff μ $ eigenvalNear m μ) $ takeWhile (<0) $ eigenvalsFrom m b
+    where traceDiff μ μ' = trace ("corrected " ++ show μ ++ " by " ++ show (μ'-μ)) μ'
 
 eigenvalsFrom :: (InnerProduct Rl a, Ord a, Show a) => Matrix a -> Rl -> [Rl]
 eigenvalsFrom m b = if M.null m then [] else seq m' b' : eigenvalsFrom m' b'
@@ -107,7 +103,7 @@ removeKernel m0 = removeKernel' m0 (idMat xs0) xs0 []
           norm v = dot @Rl v v
           without ker z = if elem z ker then mempty else return z
           -- invariant: m' * m = m0
-          removeKernel' m m' (x:xs) ker = {-trace ("m:\n"++showMatrix m++"\nm':\n"++showMatrix m'++"\nm' * m:\n"++showMatrix (matTimes m' <$> m)++"\n")-} $ let
+          removeKernel' m m' (x:xs) ker = {-trace ("m:\n"++showMatrix m++"\nm':\n"++showMatrix m'++"\nm' * m:\n"++showMatrix (matTimes m' <$> m)++"\n") $-} let
                   v = m M.! x
                   (Linear vl) = v
                   (a,y) = maximumBy (on compare (abs . fst)) $ dropWhile ((<x).snd) vl ++ [(0,undefined)]
