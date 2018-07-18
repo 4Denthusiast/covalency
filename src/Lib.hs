@@ -158,7 +158,7 @@ shiftRight (x:xs,xs') = (xs,x:xs')
 shiftRight (  [], []) = ([],[])
 
 hydrogenLikeOrbs :: Integrals -> [Orbital]
-hydrogenLikeOrbs (ov,h,_) = map ((Nothing,) . normalizeWith ov . snd) $ negativeEigenvecs h
+hydrogenLikeOrbs (ov,h,_) = map ((Nothing,) . snd) $ negativeEigenvecs ov h
 
 hfStepWorld :: Rl -> World -> World
 hfStepWorld s w = w{worldOrbitals = (orbs',[]), worldPrevEEHamiltonian = peeh'}

@@ -97,7 +97,7 @@ hartreeFockIterants ats n = map snd $ iterate (hartreeFockStep 0.5 n (calculateI
 hartreeFockStep :: Rl -> Int -> Integrals -> ([Matrix Label],[Orbital]) -> ([Matrix Label],[Orbital])
 hartreeFockStep s n (overlaps,nh,fei) (peeh,orbs) = (eeh, map (fmap (normalizeWith overlaps) . snd) $ take n $ foldr1 merge newOrbs)
     where eeh = zipWith (\a b -> addMat ((1-s) *~ a) $ (s *~ b)) peeh (eeHamiltonian fei orbs)
-          newOrbs = zipWith (\h s -> map (fmap (Just s,)) $ negativeEigenvecs $ addMat nh h) eeh [Up,Down]
+          newOrbs = zipWith (\h s -> map (fmap (Just s,)) $ negativeEigenvecs overlaps $ addMat nh h) eeh [Up,Down]
 
 -- Doesn't work with orbitals that don't have a spin.
 totalEnergy :: forall n. KnownNat n => Atoms n -> Integrals -> [Orbital] -> Rl

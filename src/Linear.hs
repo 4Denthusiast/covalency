@@ -12,12 +12,14 @@ module Linear(
     scale,
     flatten,
     flatten',
+    Semilinear(..),
     Vector(..),
     towerScale,
     InnerProduct(..),
     normalize,
     mapToLinear,
     Rl,
+    Cplx,
 ) where
 
 import Data.List
@@ -27,6 +29,7 @@ import Data.Semigroup
 import Control.Applicative
 import Control.Monad
 import Data.Bifunctor
+import Data.Complex
 
 data Linear f a = Linear [(f,a)] deriving (Ord, Eq, Show, Read)
 
@@ -64,12 +67,30 @@ flatten  (Linear xs) = mconcat $ map (uncurry (*~)) xs
 flatten' :: forall f a. (Vector a f, Num f) => Linear f a -> f
 flatten' (Linear xs) = sum $ map (uncurry $ flip (*~)) xs
 
+class Semilinear n where
+    conj :: n -> n
+    conj = id
+
+instance Semilinear Rl where
+instance Semilinear Int where
+
+instance Num n => Semilinear (Complex n) where
+    conj = conjugate
+
+instance (Semilinear n, Semilinear a) => Semilinear (Linear n a) where
+    conj (Linear xs) = Linear (map (\(n,x) -> (conj n, conj x)) xs)
+
+conj' :: Semilinear f => Linear f a -> Linear f a
+conj' (Linear xs) = Linear $ map (\(n,x) -> (conj n, x)) xs
+
 class Num f => Vector f a where
     infixl 7 *~
     (*~) :: f -> a -> a
 
 instance Num f => Vector f f where (*~) = (*)
 instance Num f => Vector f (Linear f a) where (*~) = scale
+instance Floating f => Vector f (Complex f) where a *~ b = (a *) <$> b
+instance Vector Int Cplx where n *~ x = fromIntegral n * x
 instance Vector Int Rl   where n *~ x = fromIntegral n * x
 instance {-# OVERLAPS #-} (Vector a b, Num b) => Vector a (Linear b x) where
     (*~) = towerScale @b
@@ -81,15 +102,17 @@ towerScale f b = (f *~ (1 :: a)) *~ b
 
 instance Semigroup Rl where (<>)   = (+)
 instance Monoid    Rl where {mappend = (<>); mempty = 0}
+instance RealFloat a => Semigroup (Complex a) where (<>)   = (+)
+instance RealFloat a => Monoid    (Complex a) where {mappend = (<>); mempty = 0}
 
 class InnerProduct f a where
     dot :: a -> a -> f
 
-instance Num f => InnerProduct f f where
-    dot = (*)
+instance (Num f, Semilinear f) => InnerProduct f f where
+    dot = (*) . conj
 
-instance (InnerProduct f a, Num f, Ord f, Monoid f) => InnerProduct f (Linear f a) where
-    dot x y = flatten $ dot <$> x <*> y
+instance (InnerProduct f a, Num f, Semilinear f, Monoid f) => InnerProduct f (Linear f a) where
+    dot x y = flatten $ dot <$> conj' x <*> y
 
 normalize :: forall f a. (InnerProduct f a, Vector f a, Floating f) => a -> a
 normalize l = (1/sqrt (dot @f l l)) *~ l
@@ -97,4 +120,5 @@ normalize l = (1/sqrt (dot @f l l)) *~ l
 mapToLinear :: M.Map a f -> Linear f a
 mapToLinear = Linear . map (uncurry $ flip (,)) . M.toList
 
-type Rl = Double --In case I want to change my representation again. "Real" is taken by a Prelude typeclass.
+type Rl = Double --"Real" is taken by a Prelude typeclass.
+type Cplx = Complex Rl

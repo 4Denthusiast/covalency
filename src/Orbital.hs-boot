@@ -6,7 +6,9 @@ module Orbital(
     invert,
     doInvert,
     tabulate,
+    normalizeWith,
     showMatrix,
+    traceShowMatId,
 ) where
 
 import Linear
@@ -33,6 +35,8 @@ doInvert :: (Ord a) => Matrix a -> Matrix a
 
 tabulate :: (Ord k) => [k] -> (k -> a) -> M.Map k a
 
-swap :: (x,y) -> (y,x)
+normalizeWith :: (InnerProduct Rl a, Ord a) => Matrix a -> Linear Rl a -> Linear Rl a
 
 showMatrix :: (Show a, Ord a) => Matrix a -> String
+
+traceShowMatId :: (Show a, Ord a) => Matrix a -> Matrix a

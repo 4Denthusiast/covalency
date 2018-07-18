@@ -28,6 +28,7 @@ library:
   - containers
   - bytestring
   - unix
+  - hmatrix
 
 executables:
   covalent-prototype-exe:

@@ -7,7 +7,6 @@
 module Eigen(
     inverseIterants,
     rayleighIterate,
-    negativeEigenvecsFrom,
     negativeEigenvecs,
     removeKernel,
     eigenvecNear,
@@ -24,11 +23,18 @@ import Data.List
 import Data.Function
 import Data.Maybe
 import Data.Monoid
+import Data.Bifunctor
+import qualified Numeric.LinearAlgebra.Data as ND
+import qualified Numeric.LinearAlgebra as N
+import Data.Complex
 import Debug.Trace
 
 -- This doesn't make much physical sense, but it's handy for an arbitrary normalization factor.
 instance InnerProduct Rl (AtomLabel, OrbitalLabel) where
     dot a b = if a == b then 1 else 0
+instance InnerProduct Cplx (AtomLabel, OrbitalLabel) where
+    dot a b = if a == b then 1 else 0
+instance Semilinear (AtomLabel, OrbitalLabel) where
 
 idMat :: Ord a => [a] -> Matrix a
 idMat = M.fromList . map (\x -> (x,return x))
@@ -42,9 +48,6 @@ eigenvectorQuality m v0 = norm (v' <> (-dot v v' ::Rl) *~ v)
     where v = normalize @Rl v0
           v' = matTimes m v
           norm x = dot x x
-
-powerConvergent :: (InnerProduct Rl a, Ord a) => Matrix a -> Linear Rl a
-powerConvergent m = fromJust $ find ((<0.001) . eigenvectorQuality m) $ iterate (normalize @Rl . matTimes m) $ snd $ M.findMin m
 
 offsetMat :: (Ord a) => Matrix a -> Rl -> Matrix a
 offsetMat m μ = M.mapWithKey ((reduce .) . (<>) . ((-μ) *~) . return) m
@@ -72,23 +75,6 @@ slowRayleighIterate m μ v = case offsetInverse m μ of
 
 eigenvecNear :: (InnerProduct Rl a, Ord a, Show a) => Matrix a -> Rl -> Linear Rl a
 eigenvecNear m μ0 = slowRayleighIterate m μ0 $ fromJust $ find ((<0.1).eigenvectorQuality m) $ snd $ minimumBy (on compare fst) $ (\(v:vs) -> (abs (μ0-rayleighQuotient m v),v:vs)) <$> drop 20 <$> inverseIterants m μ0 <$> return <$> M.keys m
-
-negativeEigenvecs :: (InnerProduct Rl a, Ord a, Show a) => Matrix a -> [(Rl,Linear Rl a)]
-negativeEigenvecs m = negativeEigenvecsFrom m b
-    where b = converged id $ iterate (eigenvalNear m . (\a -> minimum [a-1,a*18,-a])) 0
-
--- Sometimes misses eigenvectors due to (presumably) numerical instability.
-negativeEigenvecsFrom :: (InnerProduct Rl a, Ord a, Show a) => Matrix a -> Rl -> [(Rl,Linear Rl a)]
-negativeEigenvecsFrom m b = concatMap (\μ -> map (μ,) $ fst $ removeKernel $ offsetMat m $ traceDiff μ $ eigenvalNear m μ) $ takeWhile (<0) $ eigenvalsFrom m b
-    where traceDiff μ μ' = trace ("corrected " ++ show μ ++ " by " ++ show (μ'-μ)) μ'
-
-eigenvalsFrom :: (InnerProduct Rl a, Ord a, Show a) => Matrix a -> Rl -> [Rl]
-eigenvalsFrom m b = if M.null m then [] else seq m' b' : eigenvalsFrom m' b'
-    where b' = rayleighQuotient m $ eigenvecNear m b
-          m' = removeEigenval b' m
-
-converged f (x:x':xs) = if f x' >= f x then x else converged f (x':xs)
-converged f [x] = x
 
 -- (removeEigenval μ m) is a matrix similar to the restriction of m to a subspace complementary to the μ-eigenspace.
 removeEigenval :: (InnerProduct Rl a, Ord a, Show a) => Rl -> Matrix a -> Matrix a
@@ -123,12 +109,32 @@ removeKernel m0 = removeKernel' m0 (idMat xs0) xs0 []
                   (without ker =<<) <$> matTimes m <$> M.withoutKeys m' (S.fromList ker)
               )
 
+matToNumericsMat :: (Ord a, Show a) => Matrix a -> ND.Matrix Rl
+matToNumericsMat m = ND.tr $ ND.fromLists $ map (colToList . reduce) $ M.elems m
+    where colToList (Linear xs) = match xs (M.keys m)
+          match ((a,x):xs) (k:ks) = if x <= k then a : match xs ks else 0 : match ((a,x):xs) ks
+          match [] ks = map (const 0) ks
+
+negativeEigenvecs :: forall a. (InnerProduct Cplx a, InnerProduct Rl a, Ord a, Semilinear a, Show a) => Matrix a -> Matrix a -> [(Rl,Linear Rl a)]
+negativeEigenvecs ov m = concat $ map orthonormalize $ groupBy (on (==) fst) $ sortOn fst $ filter ((<0) . fst) ps
+    where (ne,nv) = fmap ND.tr $ N.eig $ matToNumericsMat m
+          ps = zip (map toReal $ ND.toList ne) (toLin <$> ND.toLists nv)
+          toReal (a:+b) = if abs b > 1e-10 then error ("Complex energy: "++show (a:+b)) else a
+          toLin :: (Num f, Eq f) => [f] -> Linear f a
+          toLin = reduce . Linear . flip zip (M.keys m)
+          orthonormalize ps' = snd $ mapAccumL (
+                  \vs (e,v) -> let v' = reduce $ onmlizeOnce vs v in ((complexify $ matTimes ov v', complexify v'):vs,(e,v'))
+              ) [] ps'
+          onmlizeOnce [] = normalizeWith ov . (\(Linear xs) -> Linear (first realPart <$> xs)) . rescale
+          onmlizeOnce ((f,f'):fs) = onmlizeOnce fs . (\v -> reduce $ v <> (-dot f v::Cplx) *~ f') . rescale
+          rescale (Linear xs) = (1/maximumBy (on compare magnitude) (map fst xs)) *~ Linear xs
+          complexify = flatten . fmap return
+
 --Testing
 instance InnerProduct Rl Int where
+    dot a b = if a == b then 1 else 0
+instance InnerProduct Cplx Int where
     dot a b = if a == b then 1 else 0
 
 matrixFromList :: [[Rl]] -> Matrix Int
 matrixFromList = M.fromList . zip [0..] . map (Linear . flip zip [0..])
-
-eigenvalNear :: (Ord a, InnerProduct Rl a, Show a) => Matrix a -> Rl -> Rl
-eigenvalNear m b = rayleighQuotient m $ eigenvecNear m b

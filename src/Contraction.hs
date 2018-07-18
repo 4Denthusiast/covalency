@@ -82,7 +82,7 @@ stepBasis z (ov,nh,fei) (peeh,b) = (eeh,b')
               unfoldr (\(m,l) -> guard (not (M.null m)) >> (Just $ (,l+1) <$> M.partitionWithKey (\(_,(_,l',0)) _ -> l' == l) m)) .
               (,0) . M.filterWithKey (\(_,(_,_,m)) _ -> m == 0)
           getN (_,(n,_,_)) = n
-          orbss = zipWith (\h' ov' -> map (fmap $ normalizeWith ov') (negativeEigenvecs h')) (splitMat h) (splitMat ov)
+          orbss = zipWith negativeEigenvecs (splitMat ov) (splitMat h)
           orbs = foldr merge [] $ zipWith (\l os -> map (fmap (l,)) os) [0..] orbss
           thisMultiplicity :: Num a => L -> a
           thisMultiplicity = multiplicity (natVal @n Proxy)
