@@ -16,13 +16,18 @@ import Orbital
 import Render
 import Eigen
 import Contraction
+import Geometry
 
 import Graphics.Gloss
 import Graphics.Gloss.Interface.IO.Interact
 
 import qualified Data.Map as M
+import Data.Maybe
 import Data.Monoid
 import Data.Char
+import Data.Text.Lazy.Builder.RealFloat (formatRealFloat, FPFormat(..))
+import Data.Text.Lazy.Builder (toLazyText)
+import Data.Text.Lazy (unpack)
 import GHC.TypeLits (KnownNat)
 import Debug.Trace
 
@@ -97,16 +102,20 @@ reRender w = w{orbitalPicture = renderOrbitals (worldViewScale w) (worldValScale
 
 renderOrbitals :: KnownNat n => Float -> Rl -> Atoms n -> [Orbital] -> Picture
 renderOrbitals _ _ _ [] = Blank
-renderOrbitals viewScale valScale atoms ((s,o):_) = Pictures [Scale lodF lodF $ bitmapOfOrbital px px (num viewScale / lodF) valScale o atoms, spin]
+renderOrbitals viewScale valScale atoms ((s,(e,o)):_) = Pictures [Scale lodF lodF $ bitmapOfOrbital px px (num viewScale / lodF) valScale o atoms, spin, energy]
     where px   = div 800 viewLOD
           lodF :: Num a => a
           lodF = fromIntegral viewLOD
-          spin = Color white $ Translate (390) (390) $ (maybe Blank drawSpin s)
+          spin = Color white $ Translate (230) (390) $ (maybe Blank drawSpin s)
           drawSpin Atom.Up   = Line [(-3, 3),(0, 6),(3, 3),(0, 6),(0,-6)]
           drawSpin Atom.Down = Line [(-3,-3),(0,-6),(3,-3),(0,-6),(0, 6)]
+          energy = Color white $ Translate (250) (380) $ Scale 0.15 0.15 $ Text $ unpack $ toLazyText $ formatRealFloat Exponent (Just 6) e
 
-worldEnergy :: World -> Rl
-worldEnergy w = totalEnergy (worldAtoms w) (worldIntegrals w) (worldOrbitals' w)
+worldEnergy, worldBondEnergy :: World -> Rl
+[worldEnergy, worldBondEnergy] = map (\f w -> f (worldAtoms w) (worldIntegrals w) (worldOrbitals' w)) [totalEnergy,bondEnergy]
+
+showEnergy :: Rl -> String
+showEnergy e = show e ++ " au, " ++ show (e * 27.211) ++ " eV, " ++ show (e * 2625.5) ++ " kJ/mol"
 
 handleEvent :: Event -> World -> IO World
 handleEvent event w = case inputState w of
@@ -122,8 +131,10 @@ handleEvent event w = case inputState w of
         (EventKey (Char 'R') Down _ _) -> pure $ rr w{worldOrbitals = ([],[]), worldPrevEEHamiltonian = [M.empty,M.empty]}
         (EventKey (Char 'h') Down _ _) -> pure $ rr w{worldOrbitals = (hydrogenLikeOrbs ints,[])}
         (EventKey (Char n) Down _ _) | isDigit n -> pure $ rr $ hfStepWorld (0.5 ^ digitToInt n) w
-        (EventKey (Char '[') Down _ _) -> pure $ traceShow (take 1 $ fst orbs) $ rr w{worldOrbitals = shiftRight orbs}
+        (EventKey (Char '[') Down _ _) -> pure $ rr w{worldOrbitals = shiftRight orbs}
         (EventKey (Char ']') Down _ _) -> pure $ rr w{worldOrbitals = shiftLeft orbs}
+        (EventKey (Char '#') Down _ _) -> putStrLn (maybe "" show $ listToMaybe $ fst $ worldOrbitals w) >> pure w
+        (EventKey (Char 'f') Down _ _) -> putStrLn (show $ nuclearForces atoms (worldOrbitals' w)) >> pure w
         (EventKey (SpecialKey KeyDelete) Down _ _) -> pure $ rr w{worldOrbitals = ([],[]), worldAtoms = M.delete s atoms}
         (EventKey (Char '+') Down mod _) -> pure $ case ctrl mod of
             Down -> w{worldCharge = worldCharge w + 1}
@@ -131,7 +142,8 @@ handleEvent event w = case inputState w of
         (EventKey (Char '-') Down mod _) -> pure $ case ctrl mod of
             Down -> w{worldCharge = worldCharge w - 1}
             Up   -> w{worldAtoms = M.adjust (\a -> changeZ (max 1 $ atomicNumber a - 1) a) s atoms}
-        (EventKey (Char 'e') Down _ _) -> putStrLn ("Energy: "++show (worldEnergy w)) >> pure w
+        (EventKey (Char 'e') Down _ _) -> putStrLn ("Energy: "++showEnergy (worldEnergy w)) >> pure w
+        (EventKey (Char 'E') Down _ _) -> putStrLn ("Bond energy: "++showEnergy (worldBondEnergy w)) >> pure w
         (EventKey (Char 'c') Down _ _) -> (\a -> rr w{worldAtoms = M.insert s a atoms}) <$> basisify (atoms M.! s)
         _ -> both s
     where atoms = worldAtoms w
@@ -158,7 +170,7 @@ shiftRight (x:xs,xs') = (xs,x:xs')
 shiftRight (  [], []) = ([],[])
 
 hydrogenLikeOrbs :: Integrals -> [Orbital]
-hydrogenLikeOrbs (ov,h,_) = map ((Nothing,) . snd) $ negativeEigenvecs ov h
+hydrogenLikeOrbs (ov,h,_) = map (Nothing,) $ negativeEigenvecs ov h
 
 hfStepWorld :: Rl -> World -> World
 hfStepWorld s w = w{worldOrbitals = (orbs',[]), worldPrevEEHamiltonian = peeh'}

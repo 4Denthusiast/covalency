@@ -9,11 +9,13 @@ module Orbital(
     Integrals,
     evalOrbital,
     calculateIntegrals,
+    trimOrbitals,
     nuclearHamiltonian,
     eeHamiltonian,
-    hartreeFockIterants,
+    hartreeFockSolution,
     hartreeFockStep,
     totalEnergy,
+    totalElectronEnergy,
     matTimes,
     normalizeWith,
     addMat,
@@ -44,7 +46,7 @@ import Debug.Trace
 import GHC.Stack
 
 type Label = (AtomLabel, OrbitalLabel)
-type Orbital = (Maybe Spin, Linear Rl Label)
+type Orbital = (Maybe Spin, (Rl, Linear Rl Label))
 type Matrix a = Map a (Linear Rl a)
 -- Integrals = (overlaps, nuclear hamiltonian, four-electron integrals)
 type Integrals = (Matrix Label, Matrix Label, Map Label (Map Label (Matrix Label)))
@@ -52,8 +54,8 @@ type Integrals = (Matrix Label, Matrix Label, Map Label (Map Label (Matrix Label
 evalOrbital :: KnownNat n => Atoms n -> Linear Rl Label -> Gaussians n
 evalOrbital as o = reduce $ o >>= (\(al,ol) -> atomOrbitalsGlobal (as M.! al) M.! ol)
 
-nuclearHamiltonian :: KnownNat n => Atoms n -> Matrix Label
-nuclearHamiltonian ats = M.unions $ map atomH (M.toList ats)
+nuclearHamiltonian :: KnownNat n => Atoms n -> Maybe AtomLabel -> Matrix Label
+nuclearHamiltonian ats at0 = M.unions $ map atomH (M.toList ats)
     where --atomH :: (AtomLabel, Atom n) -> Matrix Label
           atomH (al, at) = M.mapKeysMonotonic (al,) $ M.mapWithKey (\ol o -> orbH ol o al) (atomOrbitalsGlobal at)
           orbH ol o al = reduce $ approximate (overlapsH o)
@@ -61,7 +63,7 @@ nuclearHamiltonian ats = M.unions $ map atomH (M.toList ats)
           singleH o o' = totalPotential (liftA2 multiply o o') - 0.5*flatten (liftA2 (dot . laplacian) o o')
           approximate o = trim $ reduce $ o >>= ((trim <$> doInvert (overlaps allOrbs)) M.!)
           allOrbs = M.toList $ allOrbitals ats
-          totalPotential o = sum $ map (flip atomPotentialGlobal o) (M.elems ats)
+          totalPotential o = maybe (sum $ map (flip atomPotentialGlobal o) (M.elems ats)) (flip atomPotentialGlobal o . (ats M.!)) at0
 
 -- this ! a ! b ! c = int(r) (r-r')^(2-d)|c⟩⟨a|δ(r)|b⟩
 fourElectronIntegrals :: UsableDimension n => Atoms n -> Map Label (Map Label (Matrix Label))
@@ -82,7 +84,7 @@ fourElectronIntegrals ats = strict $ tabulate allLabels (\a -> tabulate allLabel
 -- Produces [up electron hamiltonian, down electron hamiltonian]
 eeHamiltonian :: Map Label (Map Label (Matrix Label)) -> [Orbital] -> [Matrix Label]
 eeHamiltonian fei orbs = foldr (zipWith addMat) [M.empty,M.empty] $ map orbField orbs
-    where orbField (s,o) = case s of
+    where orbField (s,(_,o)) = case s of
               Just Up   -> [addMat (coulumb o) (exchange o), coulumb o]
               Just Down -> [coulumb o, addMat (coulumb o) (exchange o)]
               Nothing   -> [addMat ((2::Rl) *~ coulumb o) (exchange o)]
@@ -91,25 +93,37 @@ eeHamiltonian fei orbs = foldr (zipWith addMat) [M.empty,M.empty] $ map orbField
           tei o = fmap (flatten' . (<$> o) . (M.!)) fei
           flatten' (Linear ms) = foldr addMat M.empty $ map (uncurry (*~)) ms --Can't just use flatten as Map has the wrong monoid instance.
 
-hartreeFockIterants :: UsableDimension n => Atoms n -> Int -> [[Orbital]]
-hartreeFockIterants ats n = map snd $ iterate (hartreeFockStep 0.5 n (calculateIntegrals ats)) ([M.empty,M.empty],[])
+hartreeFockSolution :: KnownNat n => Atoms n -> Integrals -> Int -> [Orbital]
+hartreeFockSolution ats ints n = converged $ map snd $ iterate (hartreeFockStep 0.5 n ints) ([M.empty,M.empty],[])
+    where converged (o:o':os) = if similar o o' then o' else converged (o':os)
+          similar [] [] = True
+          similar (o:os) (o':os') = oneSimilar o o' && similar os os'
+          similar _ _ = False
+          oneSimilar :: Orbital -> Orbital -> Bool
+          oneSimilar (s,(e,o)) (s',(e',o')) =
+              s == s' &&
+              abs (e-e') < 1e-6 * abs (e+e') &&
+              (\o'' -> dot o'' o'') (o <> (-1::Rl)*~o') < (1e-12::Rl)
 
 hartreeFockStep :: Rl -> Int -> Integrals -> ([Matrix Label],[Orbital]) -> ([Matrix Label],[Orbital])
-hartreeFockStep s n (overlaps,nh,fei) (peeh,orbs) = (eeh, map (fmap (normalizeWith overlaps) . snd) $ take n $ foldr1 merge newOrbs)
+hartreeFockStep s n (overlaps,nh,fei) (peeh,orbs) = (eeh, map snd $ take n $ foldr1 merge newOrbs)
     where eeh = zipWith (\a b -> addMat ((1-s) *~ a) $ (s *~ b)) peeh (eeHamiltonian fei orbs)
-          newOrbs = zipWith (\h s -> map (fmap (Just s,)) $ negativeEigenvecs overlaps $ addMat nh h) eeh [Up,Down]
+          newOrbs = zipWith (\h s -> map (\(e,o) -> (e,(Just s,(e,o)))) $ negativeEigenvecs overlaps $ addMat nh h) eeh [Up,Down]
 
 -- Doesn't work with orbitals that don't have a spin.
 totalEnergy :: forall n. KnownNat n => Atoms n -> Integrals -> [Orbital] -> Rl
-totalEnergy ats (overlaps, nh, fei) orbs = sum (map orbEnergy orbs) + atomEnergy
-    where orbEnergy (s,o) = matTimes overlaps o `dot` (matTimes nh o <> (0.5::Rl) *~ matTimes (getEeh s) o) / matTimes overlaps o `dot` o
-          getEeh (Just s) = eeh !! fromEnum s
-          eeh = eeHamiltonian fei $ map (fmap (normalizeWith overlaps)) orbs
-          atomEnergy = sum $ map (uncurry atomLabelPairEnergy) $ filter (uncurry (>)) $ (,) <$> atList <*> atList
+totalEnergy ats ints orbs = totalElectronEnergy ats ints orbs + atomEnergy
+    where atomEnergy = sum $ map (uncurry atomLabelPairEnergy) $ filter (uncurry (>)) $ (,) <$> atList <*> atList
           atList = M.keys ats
           atomLabelPairEnergy x y = atomPairEnergy (ats M.! x) (ats M.! y)
           atomPairEnergy x y = fromIntegral (atomicNumber x * atomicNumber y) * dist x y ^^ (2 - (natVal @n) Proxy)
           dist x y = sqrt (norm2 (zipWith (-) (atomPos x) (atomPos y)))
+
+totalElectronEnergy :: forall n. KnownNat n => Atoms n -> Integrals -> [Orbital] -> Rl
+totalElectronEnergy ats (overlaps, nh, fei) orbs = sum (map orbEnergy orbs)
+    where orbEnergy (s,(_,o)) = matTimes overlaps o `dot` (matTimes nh o <> (0.5::Rl) *~ matTimes (getEeh s) o)
+          getEeh (Just s) = eeh !! fromEnum s
+          eeh = eeHamiltonian fei orbs
 
 overlaps :: (InnerProduct Rl v, Ord a) => [(a,v)] -> Matrix a
 overlaps xs = M.fromList $ flip map xs (second $ \x -> Linear (map (\(l,x') -> (dot x x',l)) xs))
@@ -121,7 +135,7 @@ allOrbitals :: KnownNat n => Atoms n -> Map Label (Gaussians n)
 allOrbitals = mconcat . map (\(al,at) -> M.mapKeysMonotonic (al,) $ atomOrbitalsGlobal at) . M.toList
 
 calculateIntegrals :: UsableDimension n => Atoms n -> Integrals
-calculateIntegrals ats = (orbitalOverlaps ats', nuclearHamiltonian ats', fourElectronIntegrals ats')
+calculateIntegrals ats = (orbitalOverlaps ats', nuclearHamiltonian ats' Nothing, fourElectronIntegrals ats')
     where ats' = trimOrbitals ats
 
 -- Remove superfluous orbitals which are almost the same as (linear combinations of) others

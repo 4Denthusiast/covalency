@@ -5,6 +5,7 @@
 {-# LANGUAGE StandaloneDeriving  #-}
 {-# LANGUAGE FlexibleInstances   #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TupleSections #-}
 module Gaussian(
     Gaussian(..),
     Gaussians,
@@ -19,6 +20,8 @@ module Gaussian(
     reverseGauss,
     scaleGauss,
     laplacian,
+    differentiate,
+    reduceGaussians,
     norm2,
     Proxy(..),
 ) where
@@ -28,6 +31,7 @@ import {-# SOURCE #-} Polynomial (Polynomial)
 import {-# SOURCE #-} qualified Polynomial as P
 
 import Data.List
+import Data.Function
 import GHC.TypeLits --(natVal, Nat, KnownNat)
 
 data Gaussian (n::Nat) = Gaussian [Rl] Rl (Polynomial n Rl) deriving (Eq, Show, Ord)
@@ -83,10 +87,21 @@ scaleGauss :: KnownNat n => Rl -> Gaussian n -> Gaussian n
 scaleGauss a' (Gaussian xs c a) = Gaussian xs c (a' *~ a)
 
 laplacian :: forall n. KnownNat n => Gaussian n -> Gaussian n
-laplacian (Gaussian xs c a) = Gaussian xs c $ sum $ map (\i -> d i (d i a)) [0..fromIntegral $ natVal @n Proxy - 1]
-    where d :: Int -> Polynomial n Rl -> Polynomial n Rl
-          d i p = P.monomialSum (dMon . splitAt i) p - (2 / c) *~ p * P.variable i
-          dMon (h,e:t) = fromIntegral e * P.monomial (h ++ (e-1) : t)
+laplacian (Gaussian xs c a) = Gaussian xs c $ sum $ map (\i -> diffPoly c i (diffPoly c i a)) [0..fromIntegral $ natVal @n Proxy - 1]
+
+differentiate :: KnownNat n => Int -> Gaussian n -> Gaussian n
+differentiate i (Gaussian xs c a) = Gaussian xs c $ diffPoly c i a
+
+diffPoly :: KnownNat n => Rl -> Int -> Polynomial n Rl -> Polynomial n Rl
+diffPoly c i p = P.monomialSum (dMon . splitAt i) p - (2 / c) *~ p * P.variable i
+    where dMon (h,e:t) = fromIntegral e * P.monomial (h ++ (e-1) : t)
+
+reduceGaussians :: forall n. KnownNat n => Gaussians n -> Gaussians n
+reduceGaussians = Linear . map mergeGroup . toGroups . reduce
+    where toGroups (Linear xs) = groupBy (on (==) (\(_,Gaussian p c _) -> (p,c))) xs
+          mergeGroup :: [(Rl,Gaussian n)] -> (Rl,Gaussian n)
+          mergeGroup [g] = g
+          mergeGroup gs@((_,Gaussian xs c _):_) = (1,) $ Gaussian xs c $ sum $ map (\(a,Gaussian _ _ p) -> a *~ p) gs
 
 norm2 :: Num n => [n] -> n
 norm2 = sum . map (^2)

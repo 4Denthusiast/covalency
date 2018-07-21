@@ -33,7 +33,7 @@ bytestringOfOrbital x0 y0 scale vScale orb = toLazyByteString rows
           colour z = mconcat $ (map (word8 . floor . (*255)) (colourCode (vScale * z))) ++ [word8 255]
 
 colourCode :: Rl -> [Rl]
-colourCode z = map ((1-).(ri*).(1-).(r0*) . (\c -> if c then 1 else 0) . (==(z>0))) [True,False,False]
+colourCode z = map ((1-).(ri*).(1-).(r0*) . (\c -> if c then 1 else 0)) [z>0,True,z<0]
     where r         = abs z
           clamp     = max 0 . min 1
           softClamp = (1-) . (/4) . (^2) . (2-) . max 0 . min 2

@@ -95,7 +95,7 @@ stepBasis z (ov,nh,fei) (peeh,b) = (eeh,b')
           e0 = secSearchNear (fromIntegral z) (\e -> weightedSum (weight e) (e*0.6)) (fromJust eInit)
           weight e = if isNothing eInit then const 1 else exp . negate . (^4) . (e/)
           tOrbs = if isNothing eInit then orbs else takeWhile ((<0.6*e0) . fst) orbs
-          neeh = foldr addMat M.empty $ map (\(e,(l,o)) -> weight e0 e *~ head (eeHamiltonian fei (map (\m -> (Nothing,("",) <$> (,l,m) <$> o)) [0..thisMultiplicity l - 1]))) tOrbs
+          neeh = foldr addMat M.empty $ map (\(e,(l,o)) -> weight e0 e *~ head (eeHamiltonian fei (map (\m -> (Nothing,(e,("",) <$> (,l,m) <$> o))) [0..thisMultiplicity l - 1]))) tOrbs
           eeh = addMat ((0.6::Rl) *~ peeh) ((0.4::Rl) *~ neeh)
           b' = map snd tOrbs
 
