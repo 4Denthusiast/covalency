@@ -117,11 +117,9 @@ matToNumericsMat m = ND.tr $ ND.fromLists $ map (colToList . reduce) $ M.elems m
 
 negativeEigenvecs :: forall a. (InnerProduct Cplx a, InnerProduct Rl a, Ord a, Semilinear a, Show a) => Matrix a -> Matrix a -> [(Rl,Linear Rl a)]
 negativeEigenvecs ov m = concat $ map orthonormalize $ groupBy (on (==) fst) $ sortOn fst $ filter ((<0) . fst) ps
-    where (ne,nv) = fmap ND.tr $ N.eig $ matToNumericsMat m
-          ps = zip (map toReal $ ND.toList ne) (toLin <$> ND.toLists nv)
+    where ps = concatMap (\m' -> uncurry zip $ bimap (map toReal . ND.toList) (map (toLin m') . ND.toLists) $ fmap ND.tr $ N.eig $ matToNumericsMat m') (splitMat m)
           toReal (a:+b) = if abs b > 1e-10 then error ("Complex energy: "++show (a:+b)) else a
-          toLin :: (Num f, Eq f) => [f] -> Linear f a
-          toLin = reduce . Linear . flip zip (M.keys m)
+          toLin m' = reduce . Linear . flip zip (M.keys m')
           orthonormalize ps' = snd $ mapAccumL (
                   \vs (e,v) -> let v' = reduce $ onmlizeOnce vs v in ((complexify $ matTimes ov v', complexify v'):vs,(e,v'))
               ) [] ps'
@@ -129,6 +127,13 @@ negativeEigenvecs ov m = concat $ map orthonormalize $ groupBy (on (==) fst) $ s
           onmlizeOnce ((f,f'):fs) = onmlizeOnce fs . (\v -> reduce $ v <> (-dot f v::Cplx) *~ f') . rescale
           rescale (Linear xs) = (1/maximumBy (on compare magnitude) (map fst xs)) *~ Linear xs
           complexify = flatten . fmap return
+
+splitMat :: (Ord a, Show a) => Matrix a -> [Matrix a]
+splitMat m = toList $ foldr connectKey (M.mapWithKey M.singleton m) (M.keys m)
+    where connectKey k ms = foldr (connectKeys k) ms ((\(Linear xs) -> map snd xs) (m M.! k))
+          connectKeys k0 k1 ms = let [m0,m1] = (ms M.!) <$> [k0,k1] in if M.member k1 m0 then ms else addSet (M.union m0 m1) ms
+          addSet m' = M.union (M.fromSet (const m') (M.keysSet m'))
+          toList = M.elems . M.filterWithKey (\k m' -> k == fst (M.findMin m'))
 
 --Testing
 instance InnerProduct Rl Int where

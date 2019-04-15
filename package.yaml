@@ -30,6 +30,7 @@ library:
   - unix
   - hmatrix
   - text
+  - time
 
 executables:
   covalent-prototype-exe:

@@ -67,18 +67,20 @@ nuclearHamiltonian ats at0 = M.unions $ map atomH (M.toList ats)
 
 -- this ! a ! b ! c = int(r) (r-r')^(2-d)|c⟩⟨a|δ(r)|b⟩
 fourElectronIntegrals :: UsableDimension n => Atoms n -> Map Label (Map Label (Matrix Label))
-fourElectronIntegrals ats = strict $ tabulate allLabels (\a -> tabulate allLabels (\b -> tabulate allLabels (col a b)))
+fourElectronIntegrals ats = traceTime "fei time: " $ strict $ tabulate allLabels (\a -> tabulate (M.keys (cache M.! a)) (\b -> traceCol a b $ tabulate allLabels (col a b)))
     where col :: Label -> Label -> Label -> Linear Rl Label
-          col a b c = traceCol a b c $ approximate $ mapToLinear $ tabulate allLabels (getFei a b c)
-          getFei a b c d = let (a',b',c',d') = semisort (a,b,c,d) in cache M.! a' M.! b' M.! c' M.! d'
+          col a b c = approximate $ Linear $ mapMaybe (\d -> (,d) <$> getFei a b c d) allLabels
+          getFei a b c d = let (a',b',c',d') = semisort (a,b,c,d) in M.lookup d' =<< M.lookup c' =<< M.lookup b' (cache M.! a')
           semisort = (\(a,b,c,d) -> if a > c then (c,d,a,b) else (a,b,c,d)) . (\(a,b,c,d) -> (min a b, max a b, min c d, max c d))
           -- Just compute the whole thing then lazily copy some bits over others, thus reducing the amount of actual integrals performed.
-          cache = flip fmap allOrbs (\a -> flip fmap allOrbs (\b -> flip fmap allOrbs (\c -> flip fmap allOrbs (fei a b c))))
-          fei a b c d = coulumbPotential (convolve . reverseGauss <$> (multiply <$> a <*> b) <*> (multiply <$> c <*> d))
+          cache = flip fmap allOrbs (\a -> flip M.mapMaybe allOrbs (\b -> (<$> multMaybe a b) (\ab -> flip fmap allOrbs (\c -> flip M.mapMaybe allOrbs (fei ab c)))))
+          cancelZero z x = if x == z then Nothing else Just x
+          multMaybe = ((cancelZero mempty . linMaybe) .) . liftA2 (\a@(Gaussian xs c _) b@(Gaussian xs' c' _) -> if norm2 (zipWith (-) xs xs') / (c+c') > 6 then Nothing else Just $ multiply a b)
+          fei ab c d = cancelZero 0 =<< (\cd -> coulumbPotential (convolve . reverseGauss <$> ab <*> cd)) <$> multMaybe c d
           allLabels = M.keys allOrbs
           allOrbs = allOrbitals ats
           approximate = trim . reduce . ((doInvert (overlaps (M.toList allOrbs)) M.!) =<<)
-          traceCol a b c x = seq (x == x) $ trace ("col" ++ show a ++ show b ++ show c) x
+          traceCol a b x = seq (x == x) $ trace ("col " ++ show a ++ " " ++ show b) x
           strict x = seq (x == x) x
 
 -- Produces [up electron hamiltonian, down electron hamiltonian]
@@ -90,7 +92,7 @@ eeHamiltonian fei orbs = foldr (zipWith addMat) [M.empty,M.empty] $ map orbField
               Nothing   -> [addMat ((2::Rl) *~ coulumb o) (exchange o)]
           coulumb o = flatten' ((tei o M.!) <$> o)
           exchange o = ((-1::Rl) *~ (flip matTimes o <$> tei o))
-          tei o = fmap (flatten' . (<$> o) . (M.!)) fei
+          tei o = fmap (flatten' . linMaybe . (<$> o) . (M.!?)) fei
           flatten' (Linear ms) = foldr addMat M.empty $ map (uncurry (*~)) ms --Can't just use flatten as Map has the wrong monoid instance.
 
 hartreeFockSolution :: KnownNat n => Atoms n -> Integrals -> Int -> [Orbital]
@@ -154,7 +156,7 @@ doInvert :: forall a. (Ord a) => Matrix a -> Matrix a
 doInvert m = maybe (error "Singular matrix") id $ invert m
 
 matTimes :: (HasCallStack, Ord a) => Matrix a -> Linear Rl a -> Linear Rl a
-matTimes m v = reduce $ (m M.!) =<< v
+matTimes m v = reduce $ (flip (M.findWithDefault mempty) m) =<< v
 
 normalizeWith :: (InnerProduct Rl a, Ord a) => Matrix a -> Linear Rl a -> Linear Rl a
 normalizeWith m o = positiveMultiple $ (1/sqrt (dot o (matTimes m o))::Rl) *~ o
@@ -177,8 +179,8 @@ invert m0 = invert' m0 m0' xs0
               in if a == 0 then Nothing else invert' (k' <$> m) (k' <$> m') xs
 
 trim :: (Fractional f, Ord f) => Linear f a -> Linear f a
-trim (Linear xs) = Linear $ xs --filter ((>threshold) . abs . fst) xs
-    where threshold = (0.001*) $ maximum $ map (abs . fst) xs
+trim (Linear xs) = Linear $ filter ((>threshold) . abs . fst) xs
+    where threshold = (1e-10*) $ maximum $ map (abs . fst) xs
 
 tabulate :: (Ord k) => [k] -> (k -> a) -> Map k a
 tabulate ks f = M.fromList $ map (\k -> (k, f k)) ks

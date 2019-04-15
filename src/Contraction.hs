@@ -33,7 +33,7 @@ minimalBasisSet :: forall n. UsableDimension n => Int -> BasisSet
 minimalBasisSet = minimalBasisSetFrom @n (-1) 1 1
 
 minimalBasisSetFrom :: forall n. UsableDimension n => Int -> Int -> L -> Int -> BasisSet
-minimalBasisSetFrom inner outer l0 z = if insufficientBounds then expanded else b'
+minimalBasisSetFrom inner outer l0 z = if insufficientBounds then expanded else processBasisSet at b
     where insufficientBounds = inner' < inner || outer' > outer || l0' > l0
           expanded = minimalBasisSetFrom @n inner' outer' l0' z 
           inner' = minimum ns - 1
@@ -44,7 +44,16 @@ minimalBasisSetFrom inner outer l0 z = if insufficientBounds then expanded else 
           linEls (Linear xs) = map snd xs
           at = testAtom @n inner outer l0 z
           b = minimalBasisOf at
-          b' = map (\(l,o) -> (l,(\(Gaussian _ c _) -> c) <$> ((atomOrbitals at M.!) =<< (,l,0) <$> o))) b
+
+processBasisSet :: forall n. UsableDimension n => Atom n -> [(L, Linear Rl Int)] -> BasisSet
+processBasisSet at b = polarize $ map toReals $ nub $ concatMap splitValence $ b
+    where toReals (l,o) = (l,(\(Gaussian _ c _) -> c) <$> ((atomOrbitals at M.!) =<< (,l,0) <$> o))
+          valenceSize = maximum $ map orbitalSize b
+          orbitalSize (_, Linear ss) = snd $ maximum ss
+          splitValence (l, Linear ss) = (l, Linear $ filter ((<=valenceSize).snd) ss) : map ((l,).return.snd) (filter (\(x,n) -> x > 0.05 && n > valenceSize) ss)
+          lm = maximum $ map fst b
+          polarize b' = b' ++ [(lm + 1, return $ maximum $ map (realOrbSize . toReals) $ filter ((==lm).fst) b)]
+          realOrbSize (_,o) = exp $ flatten (log <$> o) / flatten (const 1 <$> o)
 
 testAtom :: forall n. UsableDimension n => Int -> Int -> L -> Int -> Atom n
 testAtom inner outer l0 z = changeZ z $ Atom {

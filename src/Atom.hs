@@ -46,7 +46,7 @@ type Atoms (n::Nat) = M.Map AtomLabel (Atom n)
 newAtom :: forall n. UsableDimension n => Int -> [Rl] -> Atom n
 newAtom z xs = changeZ z $ Atom {
         atomPos = xs,
-        atomOrbitals = (M.fromList $ liftA2 (\i (l,m,p) -> ((i,l,m),normalize @Rl $ return $ centralGaussian (e i) p)) [-4..4] (concatMap (\l -> zipWith (l,,) [0..] $ P.sphericalHarmonicPolys l) [0,1]))
+        atomOrbitals = (M.fromList $ liftA2 (\i (l,m,p) -> ((i,l,m),normalize @Rl $ return $ centralGaussian (e i) p)) [-3..4] (concatMap (\l -> zipWith (l,,) [0..] $ P.sphericalHarmonicPolys l) [0,1]))
     }
     where e :: Floating a => Int -> a
           e = (exp . (1.5*) . fromIntegral)

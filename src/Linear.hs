@@ -12,6 +12,7 @@ module Linear(
     scale,
     flatten,
     flatten',
+    linMaybe,
     Semilinear(..),
     Vector(..),
     towerScale,
@@ -23,6 +24,7 @@ module Linear(
 ) where
 
 import Data.List
+import Data.Maybe
 import qualified Data.Map as M
 import Data.Monoid hiding ((<>))
 import Data.Semigroup
@@ -66,6 +68,9 @@ flatten  :: forall f a. (Vector f a, Monoid a) => Linear f a -> a
 flatten  (Linear xs) = mconcat $ map (uncurry (*~)) xs
 flatten' :: forall f a. (Vector a f, Num f) => Linear f a -> f
 flatten' (Linear xs) = sum $ map (uncurry $ flip (*~)) xs
+
+linMaybe :: Linear f (Maybe a) -> Linear f a
+linMaybe (Linear xs) = Linear $ mapMaybe (\(n,x) -> (n,) <$> x) xs
 
 class Semilinear n where
     conj :: n -> n

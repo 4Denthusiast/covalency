@@ -63,17 +63,22 @@ centralCoulumb (Gaussian _ c a) = monomialSum' (\m -> if any odd m then 0 else s
    by expressing the gaussian by derivatives of the basic gaussian, and taking the corresponding derivatives
    of the potential function. -}
 coulumb3 :: Gaussian 3 -> Rl
-coulumb3 g@(Gaussian xs c a) = if norm2 xs < c*4e-6 then centralCoulumb g else monomialSum' (P.evaluate xs' . derivatives) a'
-    where a' = hermitify c a
-          xs' = [1/xsl, exp (- xsl*xsl / c), erf (xsl/sqrt c)] ++ xs --Add auxilliary variables for convenient manipulation.
-          xsl = sqrt $ norm2 xs
-          derivatives [x,y,z] = diff x 0 $ diff y 1 $ diff z 2 $ ((pi * c) ** 1.5) *~ variable 0 * variable 2
+coulumb3 g@(Gaussian xs c a) = if norm2 xs < c*4e-6 then centralCoulumb g else c * monomialSum (P.evaluate xs' . basis) a'
+    where a' = P.evaluate [sqrt c *~ variable i | i <- [0,1,2]] a :: Polynomial 3 Rl
+          basis [x,y,z] = coulumb3BasisFunctions !! x !! y !! z
+          xs' = [1/xsl, exp (- xsl*xsl), erf xsl] ++ map (/sqrt c) xs --Add auxilliary variables for convenient manipulation.
+          xsl = sqrt $ norm2 xs / c
+
+coulumb3BasisFunctions :: [[[Polynomial 6 Rl]]]
+coulumb3BasisFunctions = (<$> [0..]) (\x -> (<$> [0..]) (\y -> (<$> [0..]) (\z -> monomialSum derivatives $ hermitify (P.monomial [x,y,z] :: Polynomial 3 Rl))))
+    where derivatives [x,y,z] = diff x 0 $ diff y 1 $ diff z 2 $ (pi ** 1.5 :: Rl) *~ variable 0 * variable 2
+          diff :: Int -> Int -> Polynomial 6 Rl -> Polynomial 6 Rl
           diff 0 _ = id
           diff n i = diff (n-1) i . monomialSum (\es -> d0 i es + d1 i es + d2 i es + d3 i es)
           d0, d1, d2, d3 :: Int -> [Int] -> Polynomial 6 Rl
           d0 i es@(e:_:_:_) = -e *~ monomial (zipWith (+) es ([2,0,0] ++ δ i))
-          d1 i es@(_:e:_:_) = e *~ (-2/c) *~ monomial (zipWith (+) es ([0,0,0] ++ δ i))
-          d2 i es@(_:_:e:_) = e *~ (2/sqrt (pi * c)) *~ monomial (zipWith (+) es ([1,1,-1] ++ δ i))
+          d1 i es@(_:e:_:_) = e *~ (-2 :: Rl) *~ monomial (zipWith (+) es ([0,0,0] ++ δ i))
+          d2 i es@(_:_:e:_) = e *~ (2/sqrt pi :: Rl) *~ monomial (zipWith (+) es ([1,1,-1] ++ δ i))
           d3 i es@(_:_:_:es') = (es' !! i) *~ monomial (zipWith ({-ba'e-} -) es ([0,0,0] ++ δ i))
           δ i = case i of {0 -> [1,0,0]; 1 -> [0,1,0]; 2 -> [0,0,1]}
 instance NamedDimensions 6 where
@@ -95,15 +100,15 @@ erfCoeffs = map (\k -> 2 / sqrt pi / (fac k * (2*k+1))) [0..]
     where fac 0 = 1
           fac n = n * fac (n-1)
 
--- Change variables from x,y,... to d/dx,d/dy,... as applied to exp(-xs^2/c)
-hermitify :: forall n. KnownNat n => Rl -> Polynomial n Rl -> Polynomial n Rl
-hermitify c = hermitify' 0
+-- Change variables from x,y,... to d/dx,d/dy,... as applied to exp(-xs^2)
+hermitify :: forall n. KnownNat n => Polynomial n Rl -> Polynomial n Rl
+hermitify = hermitify' 0
     where hermitify' xs' 0 = xs'
           hermitify' xs' xs = let (dxs',dxs) = lead xs in hermitify' (xs' + dxs') (trimDeg (degree xs-1) $ xs - dxs)
           lead :: Polynomial n Rl -> (Polynomial n Rl, Polynomial n Rl)
-          lead xs = (c/2)^degree xs *~ monomialSum (\es -> if sum es == degree xs then (monomial es, herms (degree xs) es) else (0,0)) xs
+          lead xs = (1/2)^degree xs *~ monomialSum (\es -> if sum es == degree xs then (monomial es, herms (degree xs) es) else (0,0)) xs
           herms :: Int -> [Int] -> Polynomial n Rl
-          herms d = (1/sqrt c ^ d *~) . product . zipWith (\i e -> P.evaluate [1/sqrt c *~ variable i] (hermitianPoly e)) [0..]
+          herms d = product . zipWith (\i e -> P.evaluate [variable i] (hermitianPoly e)) [0..]
           trimDeg :: Int -> Polynomial n Rl -> Polynomial n Rl
           trimDeg d = monomialSum (\es -> if sum es <= d then monomial es else 0) -- Remove the tiny bits left over due to numerical error.
 
